@@ -1,0 +1,15 @@
+# firmware (ESP-IDF)
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# mac app (SwiftPM)
+app/.build/
+app/.swiftpm/
+app/Package.resolved
+app/dist/
+
+.DS_Store
+backups/

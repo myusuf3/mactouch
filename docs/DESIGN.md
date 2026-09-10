@@ -1,0 +1,184 @@
+# mactouch design
+
+A fingerprint sensor on your desk that macOS can ask "is that you?" and that
+shows you things with light. Built around a Seeed XIAO ESP32-S3 and a ZW101
+fingerprint module with an RGB ring.
+
+## Principles
+
+1. **Dumb firmware, smart Mac.** The device drives the sensor, the ring, and
+   touch detection. It never decides what a colour means or what a match
+   unlocks. All policy lives in the Mac app, where it can be changed without
+   reflashing.
+2. **No secrets on the device that unlock anything by themselves.** The
+   device holds fingerprint templates (inside the sensor) and one device key
+   used only to prove that a match really came from the device. No passwords,
+   no login credentials.
+3. **Text on the wire.** Every link is newline-delimited ASCII. You can drive
+   the device from `screen`, and the app from `nc`.
+4. **One abstraction for light.** Every integration is a layer in a priority
+   stack. The highest active layer owns the ring. Nothing talks to the ring
+   directly.
+
+## What a fingerprint unlocks
+
+The first version is an **approval primitive plus a PAM module**:
+
+- Any process on the Mac can ask "get me a fingerprint within N seconds" and
+  receives yes or no. Claude Code hooks, shell scripts, Shortcuts, an SSH
+  agent later.
+- `sudo` asks through PAM. The password remains a fallback.
+
+Deliberately out of scope for v1, with the reasoning recorded so it does not
+get re-argued:
+
+- **Password typing over HID.** Types your real password into whatever has
+  focus, and a hardware keylogger sees it every time. Convenient, but the
+  failure modes are the ones that hurt in daily use.
+- **PIV smart card.** Best security, but weeks of CryptoTokenKit edge cases.
+  Screen unlock by finger is the one thing v1 gives up. Revisit after the
+  device and app are solid.
+
+## Security model
+
+Threats we accept, matching the reference tinytouch project:
+
+- The sensor talks to the ESP over unauthenticated UART. Anyone who opens the
+  case can inject "match" packets. Mitigation is physical: pot the case.
+- The device is on your desk. Someone with your finger, or a good print, gets
+  in. Same as Touch ID.
+
+Threats we design against:
+
+- **A compromised user-space process on the Mac** must not be able to obtain
+  sudo without a physical touch. Therefore the PAM module does not trust the
+  app. It sends a random nonce; the device returns HMAC-SHA256 over
+  `nonce|slot` with a device key; the module verifies with a copy of that key
+  in a root-only file. The app is only a transport. Residual risk: malware can
+  relay a sudo nonce while you touch the sensor for some other reason. The
+  ring shows a distinct colour for sudo requests to make that visible.
+- **A stolen or dumped device** must not yield anything that logs in. It
+  yields the device key, which only lets an attacker forge PAM approvals if
+  they also have your Mac. Rotate by re-pairing. Enable flash encryption and
+  secure boot before relying on this.
+- **Replay** of approvals is prevented by the nonce.
+
+## Components
+
+```
++-------------------+  USB CDC (text lines)  +-------------------+
+|  firmware (ESP)   | <--------------------> |  MacTouch.app     |
+|  zw101 driver     |                        |  MacTouchKit      |
+|  ring + touch     |                        |  LED policy stack |
+|  link protocol    |                        |  monitors         |
++-------------------+                        |  control socket   |
+                                             +---------+---------+
+                                                       | unix socket (text lines)
+                                    +------------------+------------------+
+                                    |                  |                  |
+                              mactouch CLI      pam_mactouch.so     Claude Code hooks
+                                                (root, verifies      (via the CLI)
+                                                 device HMAC)
+```
+
+### Firmware (`firmware/`, ESP-IDF 5.5, C)
+
+| module | responsibility |
+| -- | -- |
+| `board.h` | GPIO numbers. The only place wiring lives. |
+| `zw101.c` | Sensor packet protocol: verify, image, search, enrol, delete, index table, ring control. Mutex-guarded. |
+| `led.c` | Ring state: idle colour, temporary states, result flashes. Thin over `zw101`. |
+| `touch.c` | Presence via TouchOut pin or polling. Edge detection, tap and hold gestures, optional auto-identify (watch mode). |
+| `link.c` | USB CDC line reader, command dispatch, event emission, one long-running command at a time, `CANCEL`. |
+| `usb.c`, `usb_descriptors.c` | TinyUSB composite device, CDC only in v1. |
+| `main.c` | Boot order, device key in NVS, tasks. |
+
+The device key is 32 random bytes generated on first boot and stored in NVS.
+`PAIR` returns it once per boot, and only after a fingerprint match.
+
+### MacTouchKit (`app/Sources/MacTouchKit`, Swift, no UI)
+
+- `Protocol`: `Command` encoding, `Response` and `Event` parsing. Pure and
+  unit-tested.
+- `SerialPort`, `DeviceLocator`: POSIX termios transport, USB VID/PID
+  discovery through IOKit, reconnection by polling once per second while
+  disconnected.
+- `Device`: request/response with timeouts, event delivery, cancellation.
+- `LEDPolicy`: priority layers resolved to one ring state. Pure and tested.
+- `Monitors`: screen lock (distributed notifications), Focus mode (watches
+  `~/Library/DoNotDisturb/DB`), microphone (CoreAudio running-somewhere),
+  camera (CoreMediaIO running-somewhere).
+- `ControlSocket`: server for the app, client for the CLI and PAM.
+
+### MacTouch.app (`app/Sources/MacTouchApp`, AppKit menu bar)
+
+Owns the device. Runs the monitors and the policy stack. Menu: device status,
+idle colour, integrations on/off, enrol and delete fingers, quit. Shows a
+notification-style HUD with the reason text when something asks for a
+fingerprint, so you know what you are approving.
+
+### mactouch CLI (`app/Sources/MacTouchCLI`)
+
+Talks to the app over the socket. `--direct` talks to the serial port when the
+app is not running, for setup and debugging.
+
+```
+mactouch status
+mactouch led red --mode breathe
+mactouch notify yellow --for 120         # transient layer
+mactouch idle cyan
+mactouch identify --timeout 15 --reason "deploy to prod"   # exit 0 on match
+mactouch enroll 2 / delete 2 / slots
+mactouch events                          # stream device events
+```
+
+### pam_mactouch (`pam/`, C)
+
+`auth sufficient pam_mactouch.so` in `/etc/pam.d/sudo`. Connects to the
+target user's control socket, sends a nonce, verifies the HMAC against
+`/etc/mactouch/<user>.key` (root, 0600). Any failure falls through to the
+password prompt. Hard 20 second timeout.
+
+## LED policy stack
+
+| priority | layer | source | ring |
+| -- | -- | -- | -- |
+| 0 | idle | user setting | chosen colour, steady, or off |
+| 10 | locked | screen lock monitor | off |
+| 20 | focus | Focus mode monitor | colour per mode (Do Not Disturb magenta by default) |
+| 30 | privacy | mic or camera live | red, breathe |
+| 40 | notify | CLI and hooks, with expiry | as requested |
+| 50 | prompt | identify in progress | blue breathe; sudo requests white breathe |
+
+Rules: highest active layer wins; a layer that clears reveals the next; the
+app sends `LED` only when the effective state changes; on reconnect it resends.
+The device itself owns only the transient match result flash (green or red for
+350 ms) so feedback stays instant.
+
+## Claude Code integration
+
+Three hooks, all shell one-liners over the CLI (`examples/claude-code/`):
+
+- `Notification` (permission needed or idle): `mactouch notify yellow --for 300`
+- `Stop`: `mactouch notify green --for 3`
+- `PreToolUse` on `Bash` matching a dangerous pattern: `mactouch identify
+  --timeout 20 --reason "$CMD"`; exit 0 allows, exit 2 denies with a message.
+
+## Phases
+
+1. **Firmware and direct CLI.** Sensor driver, ring, touch, protocol. Verify
+   on hardware with `mactouch --direct`. Confirm TouchOut on this board.
+2. **App.** MacTouchKit, menu bar, control socket, policy stack, the three
+   monitors, enrol flow.
+3. **Claude Code hooks.** Example scripts and settings snippet.
+4. **PAM.** Device key, `PAIR`, module, install script with rollback notes.
+5. **Later.** Tap gestures to Shortcuts, per-finger actions, SSH agent with
+   touch-to-sign, Calendar countdown, PIV.
+
+## Prerequisites on this machine
+
+- ESP-IDF 5.5 comes from the dotfiles nix-darwin config (nixpkgs-esp-dev, see
+  dotfiles ADR-0012). `idf.py` is on PATH after a rebuild.
+- Xcode is not installed; the command line tools with Swift 6.3 are. The Mac
+  side is a SwiftPM package for that reason. `scripts/bundle-app.sh` wraps the
+  executable in a `.app` for login items.
