@@ -67,18 +67,18 @@ Threats we design against:
 
 ```
 +-------------------+  USB CDC (text lines)  +-------------------+
-|  firmware (ESP)   | <--------------------> |  MacTouch.app     |
+|  firmware (ESP)   | <--------------------> |  mactouchd        |
 |  zw101 driver     |                        |  MacTouchKit      |
 |  ring + touch     |                        |  LED policy stack |
 |  link protocol    |                        |  monitors         |
 +-------------------+                        |  control socket   |
                                              +---------+---------+
                                                        | unix socket (text lines)
-                                    +------------------+------------------+
-                                    |                  |                  |
-                              mactouch CLI      pam_mactouch.so     Claude Code hooks
-                                                (root, verifies      (via the CLI)
-                                                 device HMAC)
+                          +----------------+-----------+-----------+----------------+
+                          |                |                       |                |
+                    mactouch CLI    pam_mactouch.so        Claude Code hooks    MacTouch.app
+                                    (root, verifies         (via the CLI)       (later)
+                                     device HMAC)
 ```
 
 ### Firmware (`firmware/`, ESP-IDF 5.5, C)
@@ -105,22 +105,34 @@ The device key is 32 random bytes generated on first boot and stored in NVS.
   disconnected.
 - `Device`: request/response with timeouts, event delivery, cancellation.
 - `LEDPolicy`: priority layers resolved to one ring state. Pure and tested.
-- `Monitors`: screen lock (distributed notifications), Focus mode (watches
-  `~/Library/DoNotDisturb/DB`), microphone (CoreAudio running-somewhere),
-  camera (CoreMediaIO running-somewhere).
+- `Monitors`: screen lock (distributed notifications), Focus mode, microphone
+  (CoreAudio running-somewhere on every input device), camera (CoreMediaIO
+  running-somewhere on every camera). Focus prefers the assertion store in
+  `~/Library/DoNotDisturb/DB`, which names the mode but needs Full Disk
+  Access; without it the monitor polls whether Control Center is showing the
+  Focus menu bar item, which macOS does by default only while a Focus is on.
+  The privacy layer drops one second after the last device stops, because
+  devices flap while an app opens them.
 - `ControlSocket`: server for the app, client for the CLI and PAM.
 
-### MacTouch.app (`app/Sources/MacTouchApp`, AppKit menu bar)
+### mactouchd (`app/Sources/MacTouchDaemon`, headless)
 
-Owns the device. Runs the monitors and the policy stack. Menu: device status,
-idle colour, integrations on/off, enrol and delete fingers, quit. Shows a
-notification-style HUD with the reason text when something asks for a
-fingerprint, so you know what you are approving.
+Owns the device. Runs the monitors and the policy stack, serves the control
+socket, and is started by launchd at login. When something asks for a
+fingerprint it posts a macOS notification with the requester's reason, so you
+know what you are approving. See ADR-0003 for why this is a daemon and not the
+app.
+
+### MacTouch.app (later, AppKit menu bar)
+
+A client of the daemon's socket like any other. Menu: device status, idle
+colour, integrations on/off, enrol and delete fingers. Needs Xcode; deferred.
 
 ### mactouch CLI (`app/Sources/MacTouchCLI`)
 
-Talks to the app over the socket. `--direct` talks to the serial port when the
-app is not running, for setup and debugging.
+Talks to the daemon over the socket when it is running, otherwise straight to
+the serial port. `--direct` forces the serial port and fails clearly if the
+daemon holds it.
 
 ```
 mactouch status
@@ -168,8 +180,8 @@ Three hooks, all shell one-liners over the CLI (`examples/claude-code/`):
 
 1. **Firmware and direct CLI.** Sensor driver, ring, touch, protocol. Verify
    on hardware with `mactouch --direct`. Confirm TouchOut on this board.
-2. **App.** MacTouchKit, menu bar, control socket, policy stack, the three
-   monitors, enrol flow.
+2. **Daemon.** MacTouchKit, `mactouchd`, control socket, policy stack, the
+   monitors, launch agent. Menu bar UI deferred to a later phase (ADR-0003).
 3. **Claude Code hooks.** Example scripts and settings snippet.
 4. **PAM.** Device key, `PAIR`, module, install script with rollback notes.
 5. **Later.** Tap gestures to Shortcuts, per-finger actions, SSH agent with

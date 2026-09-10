@@ -72,16 +72,17 @@ response.
 < OK IDENTIFY slot=1 score=143 mac=8c1e...
 ```
 
-## Control socket (app <-> CLI, PAM)
+## Control socket (mactouchd <-> CLI, PAM, UI)
 
 Path: `~/Library/Application Support/MacTouch/control.sock`, mode 0600.
-The app is the only process that holds the serial port. Clients send one
+The daemon is the only process that holds the serial port. Clients send one
 command line and read lines until `ok` or `err`; `events` streams until the
-client disconnects.
+client disconnects. Several clients may be connected at once; long commands
+are one at a time and a second gets `err ... reason=busy`.
 
 | command | response |
 | -- | -- |
-| `status` | `ok status device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy` |
+| `status` | `ok status proto=1 device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy monitors=lock,focus,mic,camera` |
 | `led <mode> [<colour>] [<colour2>]` | `ok led` (sets the notify layer with no expiry) |
 | `notify <colour> for=<seconds> [mode=<mode>]` | `ok notify` |
 | `clear` | `ok clear` (drops the notify layer) |
@@ -89,8 +90,9 @@ client disconnects.
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots` | as device |
-| `events` | `evt ...` lines until disconnect |
+| `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
+| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent` and `evt ring state=<mode>:<colour>` |
 
-`identify` from the socket shows the reason text in the app's HUD so the user
-knows what they are approving. PAM requests pass `nonce`, and the app uses the
-white prompt colour for them.
+`identify` from the socket posts a macOS notification with the reason text so
+the user knows what they are approving. PAM requests pass `nonce`, and the
+daemon uses the white prompt colour for them.

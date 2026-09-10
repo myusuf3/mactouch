@@ -26,11 +26,20 @@ cd firmware && idf.py set-target esp32s3 && idf.py build
 Mac side:
 
 ```
-cd app && swift build          # library and the mactouch CLI
+cd app && swift build          # library, mactouchd, and the mactouch CLI
 ../scripts/test.sh             # unit tests
 .build/debug/mactouch status
 ```
 
-Status: Phase 1 complete and verified on hardware. Enrol, identify, watch mode,
-gestures, ring control, key export and the signed identify all work from the
-CLI. Phase 2 (menu bar app, policy stack, monitors) is next.
+Install the daemon as a launch agent and the CLI into `~/.local/bin`:
+
+```
+scripts/install.sh
+mactouch status                # via the daemon
+mactouch notify green --for 5
+mactouch identify --reason "deploy"
+```
+
+Status: Phase 2 in progress. The daemon owns the device, resolves the ring
+policy, runs the lock, Focus, microphone and camera monitors, and serves the
+control socket the CLI uses. Menu bar UI deferred (ADR-0003).
