@@ -7,13 +7,19 @@ let package = Package(
   products: [
     .library(name: "MacTouchKit", targets: ["MacTouchKit"]),
     .executable(name: "mactouch", targets: ["MacTouchCLI"]),
+    .executable(name: "mactouchd", targets: ["MacTouchDaemon"]),
   ],
   targets: [
     .target(
       name: "MacTouchKit",
-      linkerSettings: [.linkedFramework("IOKit")]
+      linkerSettings: [
+        .linkedFramework("IOKit"),
+        .linkedFramework("CoreAudio"),
+        .linkedFramework("CoreMediaIO"),
+      ]
     ),
     .executableTarget(name: "MacTouchCLI", dependencies: ["MacTouchKit"]),
+    .executableTarget(name: "MacTouchDaemon", dependencies: ["MacTouchKit"]),
     .testTarget(name: "MacTouchKitTests", dependencies: ["MacTouchKit"]),
   ]
 )
