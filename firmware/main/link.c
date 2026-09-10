@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "board.h"
 #include "driver/gpio.h"
 #include "esp_system.h"
 #include "esp_private/periph_ctrl.h"
@@ -35,7 +36,6 @@ typedef struct {
   char args[LINK_LINE_MAX];
 } job_t;
 
-static SemaphoreHandle_t write_lock;
 static QueueHandle_t jobs;
 static volatile bool busy;
 static volatile bool cancel_requested;
@@ -56,26 +56,36 @@ static void finish(const char *fmt, ...) {
 // landed on. The sensor UART pins are left out.
 static const int DIAG_PINS[] = {3, 4, 5, 6, 7, 8, 9, 43, 44};
 
+// Every line leaves through this queue and is written by the console task.
+// TinyUSB's class APIs are not safe to call from several tasks at once, and
+// a write racing the USB task can leave the endpoint stuck until power cycle.
+typedef struct { char text[LINK_LINE_MAX + 2]; } outbound_t;
+static QueueHandle_t outbox;
+
 void link_send(const char *fmt, ...) {
-  char line[LINK_LINE_MAX + 2];
+  outbound_t line;
   va_list ap;
   va_start(ap, fmt);
-  int n = vsnprintf(line, LINK_LINE_MAX, fmt, ap);
+  int n = vsnprintf(line.text, LINK_LINE_MAX, fmt, ap);
   va_end(ap);
   if (n < 0) return;
   if (n > LINK_LINE_MAX - 1) n = LINK_LINE_MAX - 1;
-  line[n++] = '\n';
+  line.text[n++] = '\n';
+  line.text[n] = '\0';
+  if (!tud_cdc_connected() || !outbox) return;
+  // A host that has stopped reading must not stall the sensor tasks.
+  xQueueSend(outbox, &line, pdMS_TO_TICKS(20));
+}
 
-  if (!tud_cdc_connected()) return;
-  xSemaphoreTake(write_lock, portMAX_DELAY);
-  int64_t deadline = esp_timer_get_time() + 500000;
+static void write_line(const char *text) {
+  size_t n = strlen(text);
   size_t sent = 0;
-  while (sent < (size_t)n && tud_cdc_connected() && esp_timer_get_time() < deadline) {
-    uint32_t w = tud_cdc_write(line + sent, (uint32_t)(n - sent));
-    tud_cdc_write_flush();
+  int64_t deadline = esp_timer_get_time() + 200000;
+  while (sent < n && tud_cdc_connected() && esp_timer_get_time() < deadline) {
+    uint32_t w = tud_cdc_write(text + sent, (uint32_t)(n - sent));
     if (w) sent += w; else vTaskDelay(1);
   }
-  xSemaphoreGive(write_lock);
+  tud_cdc_write_flush();
 }
 
 bool link_busy(void) { return busy; }
@@ -496,8 +506,25 @@ static void console_task(void *arg_) {
   bool overflow = false;
   bool was_connected = false;
   uint8_t chunk[64];
+  TickType_t next_beat = 0;
+  bool beat = false;
 
   while (true) {
+    // Heartbeat on the board LED: a stopped blink means this task is stuck; a
+    // blink with a silent host means the USB link is the problem.
+    TickType_t now = xTaskGetTickCount();
+    if (now >= next_beat) {
+      beat = !beat;
+      gpio_set_level(BOARD_USER_LED_PIN, beat ? 0 : 1);
+      next_beat = now + pdMS_TO_TICKS(beat ? 100 : 900);
+    }
+    outbound_t out;
+    bool wrote = false;
+    while (xQueueReceive(outbox, &out, 0) == pdTRUE) {
+      write_line(out.text);
+      wrote = true;
+    }
+
     bool connected = tud_cdc_connected();
     if (connected && !was_connected) {
       vTaskDelay(pdMS_TO_TICKS(50));
@@ -523,13 +550,13 @@ static void console_task(void *arg_) {
         overflow = false;
       }
     }
-    if (!activity) vTaskDelay(pdMS_TO_TICKS(5));
+    if (!activity && !wrote) vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
 void link_init(void) {
-  write_lock = xSemaphoreCreateMutex();
-  configASSERT(write_lock);
+  outbox = xQueueCreate(32, sizeof(outbound_t));
+  configASSERT(outbox);
   jobs = xQueueCreate(1, sizeof(job_t));
   configASSERT(jobs);
 
@@ -542,6 +569,12 @@ void link_init(void) {
     .intr_type = GPIO_INTR_DISABLE,
   };
   ESP_ERROR_CHECK(gpio_config(&diag));
+  gpio_config_t led = {
+    .pin_bit_mask = 1ULL << BOARD_USER_LED_PIN,
+    .mode = GPIO_MODE_OUTPUT,
+  };
+  ESP_ERROR_CHECK(gpio_config(&led));
+  gpio_set_level(BOARD_USER_LED_PIN, 1);
 
   configASSERT(xTaskCreate(worker_task, "link_worker", 6144, NULL, 3, NULL) == pdPASS);
   configASSERT(xTaskCreate(console_task, "link_console", 6144, NULL, 3, NULL) == pdPASS);
