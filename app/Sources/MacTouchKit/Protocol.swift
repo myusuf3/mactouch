@@ -1,0 +1,168 @@
+import Foundation
+
+/// The eight states the ring can show. Raw values are the wire names.
+public enum LEDColour: String, CaseIterable, Sendable {
+  case off, blue, green, cyan, red, magenta, yellow, white
+}
+
+public enum LEDMode: String, CaseIterable, Sendable {
+  case off, on, breathe, flash, fadein, fadeout
+}
+
+public enum TouchSource: String, CaseIterable, Sendable {
+  case pin, poll
+}
+
+/// A command for the device. `line` is the exact text sent, without the newline.
+public enum Command: Equatable, Sendable {
+  case ping
+  case status
+  case led(LEDMode, LEDColour, LEDColour? = nil, cycles: Int = 0)
+  case idle(LEDColour)
+  case identify(timeoutMs: Int, prompt: LEDColour? = nil, nonce: String? = nil)
+  case enroll(slot: Int)
+  case delete(slot: Int)
+  case deleteAll
+  case slots
+  case watch(Bool)
+  case touch(TouchSource)
+  case pair(timeoutMs: Int = 30000)
+  case gpio
+  case cancel
+  case reboot
+  case bootloader
+
+  public var verb: String {
+    switch self {
+    case .ping: return "PING"
+    case .status: return "STATUS"
+    case .led: return "LED"
+    case .idle: return "IDLE"
+    case .identify: return "IDENTIFY"
+    case .enroll: return "ENROLL"
+    case .delete, .deleteAll: return "DELETE"
+    case .slots: return "SLOTS"
+    case .watch: return "WATCH"
+    case .touch: return "TOUCH"
+    case .pair: return "PAIR"
+    case .gpio: return "GPIO"
+    case .cancel: return "CANCEL"
+    case .reboot: return "REBOOT"
+    case .bootloader: return "BOOTLOADER"
+    }
+  }
+
+  /// The verb the device answers with. PING is acknowledged as PONG.
+  public var responseVerb: String { self == .ping ? "PONG" : verb }
+
+  public var line: String {
+    switch self {
+    case .led(let mode, let colour, let colour2, let cycles):
+      if mode == .off { return "LED off" }
+      var parts = ["LED", mode.rawValue, colour.rawValue]
+      if let colour2, colour2 != colour { parts.append(colour2.rawValue) }
+      if cycles > 0 { parts.append(String(cycles)) }
+      return parts.joined(separator: " ")
+    case .idle(let colour):
+      return "IDLE \(colour.rawValue)"
+    case .identify(let timeoutMs, let prompt, let nonce):
+      var parts = ["IDENTIFY", "timeout=\(timeoutMs)"]
+      if let prompt { parts.append("prompt=\(prompt.rawValue)") }
+      if let nonce { parts.append("nonce=\(nonce)") }
+      return parts.joined(separator: " ")
+    case .enroll(let slot): return "ENROLL slot=\(slot)"
+    case .delete(let slot): return "DELETE slot=\(slot)"
+    case .deleteAll: return "DELETE all"
+    case .watch(let on): return "WATCH \(on ? "on" : "off")"
+    case .touch(let source): return "TOUCH \(source.rawValue)"
+    case .pair(let timeoutMs): return "PAIR timeout=\(timeoutMs)"
+    default: return verb
+    }
+  }
+}
+
+/// `key=value` fields from a response or event line.
+public struct Fields: Equatable, Sendable {
+  public var values: [String: String]
+  public var positional: [String]
+
+  public init(values: [String: String] = [:], positional: [String] = []) {
+    self.values = values
+    self.positional = positional
+  }
+
+  public subscript(_ key: String) -> String? { values[key] }
+  public func int(_ key: String) -> Int? { values[key].flatMap(Int.init) }
+  public func bool(_ key: String) -> Bool? {
+    switch values[key] {
+    case "1", "on", "true": return true
+    case "0", "off", "false": return false
+    default: return nil
+    }
+  }
+}
+
+/// One line from the device.
+public enum DeviceLine: Equatable, Sendable {
+  case ok(verb: String, fields: Fields)
+  case err(verb: String, reason: String)
+  case event(name: String, fields: Fields)
+
+  public static func parse(_ raw: String) -> DeviceLine? {
+    let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    var tokens = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+    guard tokens.count >= 2 else { return nil }
+    let kind = tokens.removeFirst()
+    let verb = tokens.removeFirst()
+    switch kind {
+    case "OK": return .ok(verb: verb, fields: parseFields(tokens))
+    case "EVT": return .event(name: verb, fields: parseFields(tokens))
+    case "ERR":
+      // The reason runs to the end of the line and may contain spaces.
+      if let range = line.range(of: "reason=") {
+        return .err(verb: verb, reason: String(line[range.upperBound...]))
+      }
+      return .err(verb: verb, reason: tokens.joined(separator: " "))
+    default: return nil
+    }
+  }
+
+  private static func parseFields(_ tokens: [String]) -> Fields {
+    var fields = Fields()
+    for token in tokens {
+      if let eq = token.firstIndex(of: "=") {
+        fields.values[String(token[..<eq])] = String(token[token.index(after: eq)...])
+      } else {
+        fields.positional.append(token)
+      }
+    }
+    return fields
+  }
+}
+
+/// Accumulates bytes and yields complete lines. `\r` is dropped.
+public struct LineBuffer {
+  private var buffer = Data()
+  public private(set) var droppedOverlong = 0
+  public let limit: Int
+
+  public init(limit: Int = 1024) { self.limit = limit }
+
+  public mutating func append(_ data: Data) -> [String] {
+    buffer.append(data)
+    var lines: [String] = []
+    while let newline = buffer.firstIndex(of: 0x0a) {
+      let chunk = buffer[buffer.startIndex..<newline]
+      buffer.removeSubrange(buffer.startIndex...newline)
+      if chunk.count > limit { droppedOverlong += 1; continue }
+      if let text = String(data: chunk.filter { $0 != 0x0d }, encoding: .utf8), !text.isEmpty {
+        lines.append(text)
+      }
+    }
+    if buffer.count > limit {
+      buffer.removeAll()
+      droppedOverlong += 1
+    }
+    return lines
+  }
+}
