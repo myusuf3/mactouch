@@ -8,6 +8,10 @@ public final class Device {
   /// Events, including the ones a long command emits before its reply.
   public var onEvent: ((String, Fields) -> Void)?
   public var onDisconnect: (() -> Void)?
+  /// Every raw line from the device, for debugging.
+  public var onRawLine: ((String) -> Void)?
+  /// Every line written to the device, for debugging.
+  public var onRawWrite: ((String) -> Void)?
 
   private let port: SerialPort
   private let state = NSLock()
@@ -32,6 +36,7 @@ public final class Device {
   }
 
   private func handle(_ raw: String) {
+    onRawLine?(raw)
     guard let line = DeviceLine.parse(raw) else { return }
     if case .event(let name, let fields) = line {
       onEvent?(name, fields)
@@ -64,6 +69,7 @@ public final class Device {
     }
     state.unlock()
 
+    onRawWrite?(command.line)
     try port.write(command.line + "\n")
     if done.wait(timeout: .now() + timeout) == .timedOut {
       state.lock(); pending = nil; state.unlock()

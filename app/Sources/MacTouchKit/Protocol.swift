@@ -109,34 +109,12 @@ public enum DeviceLine: Equatable, Sendable {
   case event(name: String, fields: Fields)
 
   public static func parse(_ raw: String) -> DeviceLine? {
-    let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    var tokens = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-    guard tokens.count >= 2 else { return nil }
-    let kind = tokens.removeFirst()
-    let verb = tokens.removeFirst()
-    switch kind {
-    case "OK": return .ok(verb: verb, fields: parseFields(tokens))
-    case "EVT": return .event(name: verb, fields: parseFields(tokens))
-    case "ERR":
-      // The reason runs to the end of the line and may contain spaces.
-      if let range = line.range(of: "reason=") {
-        return .err(verb: verb, reason: String(line[range.upperBound...]))
-      }
-      return .err(verb: verb, reason: tokens.joined(separator: " "))
-    default: return nil
+    guard let tagged = TaggedLine.parse(raw, ok: "OK", err: "ERR", evt: "EVT") else { return nil }
+    switch tagged {
+    case .ok(let verb, let fields): return .ok(verb: verb, fields: fields)
+    case .err(let verb, let reason): return .err(verb: verb, reason: reason)
+    case .evt(let name, let fields): return .event(name: name, fields: fields)
     }
-  }
-
-  private static func parseFields(_ tokens: [String]) -> Fields {
-    var fields = Fields()
-    for token in tokens {
-      if let eq = token.firstIndex(of: "=") {
-        fields.values[String(token[..<eq])] = String(token[token.index(after: eq)...])
-      } else {
-        fields.positional.append(token)
-      }
-    }
-    return fields
   }
 }
 
