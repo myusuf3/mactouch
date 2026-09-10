@@ -20,6 +20,15 @@ if [[ -z "$port" ]]; then
   port="${ports[1]}"
 fi
 
+# The daemon holds the device; give esptool the port and bring it back after.
+label="dev.mactouch.daemon"
+daemon_was_loaded=false
+if launchctl print "gui/$UID/$label" >/dev/null 2>&1; then
+  daemon_was_loaded=true
+  launchctl bootout "gui/$UID/$label"
+fi
+pkill -f "debug/mactouchd" 2>/dev/null || true
+
 print "Port: $port"
 esptool.py --chip esp32s3 --port "$port" --before default_reset --after no_reset --connect-attempts 5 flash_id | grep -E "Detected flash size|Chip is|MAC"
 
@@ -36,6 +45,11 @@ esptool.py --chip esp32s3 --port "$port" -b 921600 --before default_reset --afte
 
 print
 print "Done. The board has been reset into the new firmware."
+if $daemon_was_loaded; then
+  sleep 2
+  launchctl bootstrap "gui/$UID" "$HOME/Library/LaunchAgents/$label.plist"
+  print "mactouchd restarted."
+fi
 if $backup_wanted; then
   print "Restore the old firmware with:"
   print "  esptool.py --chip esp32s3 --port <port> write_flash 0 $backup"
