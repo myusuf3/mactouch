@@ -24,6 +24,7 @@
 #include "led.h"
 #include "settings.h"
 #include "touch.h"
+#include "vectors.h"
 #include "zw101.h"
 
 #define LINK_LINE_MAX 256
@@ -156,19 +157,25 @@ static bool valid_nonce(char *nonce) {
   return true;
 }
 
-static bool sign_match(const char *nonce, uint16_t slot, char mac_hex[65]) {
-  uint8_t key[32];
-  settings_device_key(key);
+// HMAC-SHA256 over IDENTIFY|<nonce>|<slot>; pinned by docs/protocol-vectors.json.
+static bool sign_identify(const uint8_t key[32], const char *nonce, uint16_t slot, char mac_hex[65]) {
   char material[64];
   snprintf(material, sizeof(material), "IDENTIFY|%s|%u", nonce, slot);
   uint8_t mac[32];
   const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-  int rc = mbedtls_md_hmac(info, key, sizeof(key), (const uint8_t *)material,
-                           strlen(material), mac);
-  memset(key, 0, sizeof(key));
+  int rc = mbedtls_md_hmac(info, key, 32, (const uint8_t *)material, strlen(material), mac);
   if (rc != 0) return false;
   hex_encode(mac, sizeof(mac), mac_hex);
   return true;
+}
+
+static void selftest(void) {
+  char mac_hex[65];
+  if (sign_identify(VECTOR_DEVICE_KEY, VECTOR_NONCE, VECTOR_SLOT, mac_hex) && strcmp(mac_hex, VECTOR_MAC) == 0) {
+    link_send("OK SELFTEST");
+  } else {
+    link_send("ERR SELFTEST reason=hmac");
+  }
 }
 
 static bool wait_lift(uint32_t timeout_ms) {
@@ -269,8 +276,12 @@ static void run_identify(const char *args, bool pair) {
     finish("OK PAIR key=%s", key_hex);
     memset(key_hex, 0, sizeof(key_hex));
   } else if (have_nonce) {
+    uint8_t key[32];
     char mac_hex[65];
-    if (sign_match(nonce, slot, mac_hex)) {
+    settings_device_key(key);
+    bool signed_ok = sign_identify(key, nonce, slot, mac_hex);
+    memset(key, 0, sizeof(key));
+    if (signed_ok) {
       finish("OK IDENTIFY slot=%u score=%u mac=%s", slot, score, mac_hex);
     } else {
       finish("ERR IDENTIFY reason=hmac");
@@ -467,6 +478,8 @@ static void handle(char *line) {
     slots();
   } else if (strcmp(line, "GPIO") == 0) {
     gpio_diag();
+  } else if (strcmp(line, "SELFTEST") == 0) {
+    selftest();
   } else if (strcmp(line, "IDENTIFY") == 0) {
     submit(JOB_IDENTIFY, "IDENTIFY", args);
   } else if (strcmp(line, "ENROLL") == 0) {
