@@ -32,6 +32,7 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | `REBOOT` | `OK REBOOT` | |
 | `BOOTLOADER` | `ERR BOOTLOADER reason=unsupported` | reserved. Meant to reboot into ROM download mode; neither known sequence works on this board yet, and a failed attempt kills the USB link until a power cycle, so it is compiled out. |
 | `GPIO` | `OK GPIO 3=0 4=1 5=0 ...` | levels of the unused XIAO pins, for confirming where a wire landed. |
+| `SELFTEST` | `OK SELFTEST` or `ERR SELFTEST reason=hmac` | signs the vector compiled in from `docs/protocol-vectors.json` and compares. Proves this firmware's HMAC agrees with the Mac side. |
 | `CANCEL` | `OK CANCEL` | |
 | anything else | `ERR COMMAND reason=unknown` | |
 
@@ -76,9 +77,10 @@ response.
 
 `docs/protocol-vectors.json` pins the identify signature: a fixed device key,
 nonce and slot, the exact material string `IDENTIFY|<nonce>|<slot>`, and its
-HMAC-SHA256. `scripts/gen-vectors.py` regenerates it and `--check` fails if
-the file is stale. The Swift verifier is tested against it; the firmware
-must produce the same bytes, so any change to the construction starts here.
+HMAC-SHA256. `scripts/gen-vectors.py` regenerates it, along with
+`firmware/main/vectors.h`, and `--check` fails if either is stale. The Swift
+verifier is tested against the JSON; the firmware checks itself against the
+header on `SELFTEST`. Any change to the construction starts in the generator.
 
 ## Control socket (mactouchd <-> CLI, PAM, UI)
 
@@ -97,7 +99,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `idle <colour>` | `ok idle` |
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
-| `delete slot=<n>\|all`, `slots` | as device |
+| `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
 | `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent` and `evt ring state=<mode>:<colour>` |
 

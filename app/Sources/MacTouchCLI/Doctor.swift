@@ -18,6 +18,7 @@ struct Check {
 func runDoctor(direct: Bool, port: String?) -> Int32 {
   var checks: [Check] = []
   var status: Fields?
+  var selftest: (() throws -> Void)?
 
   let plist = NSHomeDirectory() + "/Library/LaunchAgents/dev.mactouch.daemon.plist"
   checks.append(FileManager.default.fileExists(atPath: plist)
@@ -27,9 +28,11 @@ func runDoctor(direct: Bool, port: String?) -> Int32 {
   if !direct && ControlClient.isAvailable() {
     do {
       let client = try ControlClient()
-      defer { client.close() }
       status = try client.request(ControlRequest(verb: "status"))
       checks.append(Check(.ok, "daemon", "running"))
+      if status?["device"] == "connected" {
+        selftest = { _ = try client.request(ControlRequest(verb: "selftest")) }
+      }
     } catch {
       checks.append(Check(.bad, "daemon", "socket present but not answering (\(error)); scripts/daemon.sh restart"))
     }
@@ -38,8 +41,10 @@ func runDoctor(direct: Bool, port: String?) -> Int32 {
     checks.append(Check(direct ? .off : .warn, "daemon",
                         direct ? "skipped, --direct" : "not running; monitors, notify and hooks need it. scripts/daemon.sh start"))
     do {
-      status = try openDevice(port).request(.status)
+      let device = try openDevice(port)
+      status = try device.request(.status)
       checks.append(deviceCheck(connected: true, firmware: status?["fw"]))
+      selftest = { try device.request(.selftest) }
     } catch let exit as Exit {
       checks.append(Check(.bad, "device", exit.message ?? "cannot open"))
     } catch DeviceError.notFound {
@@ -53,6 +58,17 @@ func runDoctor(direct: Bool, port: String?) -> Int32 {
   case "ready": checks.append(Check(.ok, "sensor", "ready"))
   case "offline": checks.append(Check(.bad, "sensor", "not answering; replug the device, and check the module wiring if it recurs"))
   default: checks.append(Check(.off, "sensor", "cannot check until the device is connected"))
+  }
+
+  if let selftest {
+    do {
+      try selftest()
+      checks.append(Check(.ok, "signature", "firmware signs the shared protocol vector correctly"))
+    } catch {
+      checks.append("\(error)".contains("unknown")
+        ? Check(.off, "signature", "cannot check; the firmware or mactouchd predates SELFTEST. Reflash, or scripts/daemon.sh restart")
+        : Check(.bad, "signature", "firmware HMAC disagrees with docs/protocol-vectors.json (\(error)); reflash"))
+    }
   }
 
   if let prints = status?.int("prints") {

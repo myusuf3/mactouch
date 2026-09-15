@@ -96,6 +96,7 @@ mactouch doctor              # verdicts with a fix each: daemon, device, sensor,
 mactouch status              # daemon, device, firmware, sensor, ring, layers, monitors
 mactouch ping
 mactouch gpio                # levels of the unused XIAO pins
+mactouch selftest            # firmware signs the shared protocol vector; doctor runs this too
 mactouch touch pin|poll      # how the firmware detects a finger
 mactouch cancel              # abort a running identify or enrolment
 mactouch reboot
