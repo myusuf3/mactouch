@@ -1,0 +1,7 @@
+{
+  "device_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "nonce": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+  "slot": 3,
+  "material": "IDENTIFY|a0a1a2a3a4a5a6a7a8a9aaabacadaeaf|3",
+  "mac": "8e0f2e4ae2936b40bfa221072321b93381f71f4a91360e42ad91c2119decd702"
+}

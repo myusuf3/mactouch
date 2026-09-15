@@ -72,6 +72,14 @@ response.
 < OK IDENTIFY slot=1 score=143 mac=8c1e...
 ```
 
+### Test vectors
+
+`docs/protocol-vectors.json` pins the identify signature: a fixed device key,
+nonce and slot, the exact material string `IDENTIFY|<nonce>|<slot>`, and its
+HMAC-SHA256. `scripts/gen-vectors.py` regenerates it and `--check` fails if
+the file is stale. The Swift verifier is tested against it; the firmware
+must produce the same bytes, so any change to the construction starts here.
+
 ## Control socket (mactouchd <-> CLI, PAM, UI)
 
 Path: `~/Library/Application Support/MacTouch/control.sock`, mode 0600.
