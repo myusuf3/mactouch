@@ -27,6 +27,7 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   monitor <lock|focus|mic|camera> on|off
   pair [--timeout SECONDS]        print the device key (once per boot, needs a touch)
   gpio                            pin levels, for checking wiring
+  selftest                        firmware signs the shared protocol vector
   events                          stream events until interrupted
   cancel
   reboot
@@ -92,7 +93,7 @@ func runViaDaemon(_ command: [String]) throws -> Int32 {
   var timeout: TimeInterval = 10
 
   switch verb {
-  case "status", "ping", "clear", "slots", "gpio", "cancel", "reboot":
+  case "status", "ping", "clear", "slots", "gpio", "selftest", "cancel", "reboot":
     break
   case "led":
     if let seconds = option("--for", in: &args) { request.values["for"] = seconds }
@@ -210,6 +211,7 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
     print("touch the sensor to release the device key")
     printFields(try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3))
   case "gpio": printFields(try device.request(.gpio))
+  case "selftest": try device.request(.selftest)
   case "events":
     FileHandle.standardError.write(Data("streaming events from the device, ctrl-c to stop\n".utf8))
     dispatchMain()

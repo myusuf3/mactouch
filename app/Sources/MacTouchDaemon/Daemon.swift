@@ -205,6 +205,7 @@ final class Daemon {
 
     case "slots": passthrough(.slots, verb, connection)
     case "gpio": passthrough(.gpio, verb, connection)
+    case "selftest": passthrough(.selftest, verb, connection)
     case "watch":
       guard let value = request.positional.first, value == "on" || value == "off" else { return fail("value") }
       passthrough(.watch(value == "on"), verb, connection)

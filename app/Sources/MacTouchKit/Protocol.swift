@@ -28,6 +28,7 @@ public enum Command: Equatable, Sendable {
   case touch(TouchSource)
   case pair(timeoutMs: Int = 30000)
   case gpio
+  case selftest
   case cancel
   case reboot
   case bootloader
@@ -46,6 +47,7 @@ public enum Command: Equatable, Sendable {
     case .touch: return "TOUCH"
     case .pair: return "PAIR"
     case .gpio: return "GPIO"
+    case .selftest: return "SELFTEST"
     case .cancel: return "CANCEL"
     case .reboot: return "REBOOT"
     case .bootloader: return "BOOTLOADER"

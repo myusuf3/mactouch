@@ -17,6 +17,7 @@ import Testing
     #expect(Command.touch(.poll).line == "TOUCH poll")
     #expect(Command.pair().line == "PAIR timeout=30000")
     #expect(Command.pair(timeoutMs: 5000).responseVerb == "PAIR")
+    #expect(Command.selftest.line == "SELFTEST")
   }
 
   @Test func responseVerbs() {
