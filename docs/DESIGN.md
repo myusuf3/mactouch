@@ -182,10 +182,10 @@ Three hooks, all shell one-liners over the CLI (`examples/claude-code/`):
    on hardware with `mactouch --direct`. Confirm TouchOut on this board.
 2. **Daemon.** MacTouchKit, `mactouchd`, control socket, policy stack, the
    monitors, launch agent. Menu bar UI deferred to a later phase (ADR-0003).
-3. **Claude Code hooks.** Example scripts and settings snippet.
-4. **PAM.** Device key, `PAIR`, module, install script with rollback notes.
-5. **Later.** Tap gestures to Shortcuts, per-finger actions, SSH agent with
-   touch-to-sign, Calendar countdown, PIV.
+3. **PAM.** Module and install script with rollback notes, on top of the
+   shared vectors and firmware self-test (ADR-0011).
+4. **Later.** Claude Code hooks, tap gestures to Shortcuts, per-finger
+   actions, SSH agent with touch-to-sign, Calendar countdown, PIV.
 
 ## Prerequisites on this machine
 
