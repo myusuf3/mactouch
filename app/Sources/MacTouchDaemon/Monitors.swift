@@ -83,6 +83,7 @@ final class Monitors {
   }
 
   var enabledNames: [String] { MonitorName.allCases.filter(isEnabled).map(\.rawValue) }
+  var focusSource: FocusMonitor.Source? { running.contains(.focus) ? focus.source : nil }
 
   func set(_ name: MonitorName, enabled: Bool) {
     defaults.set(enabled, forKey: "monitor.\(name.rawValue)")

@@ -90,7 +90,7 @@ are one at a time and a second gets `err ... reason=busy`.
 
 | command | response |
 | -- | -- |
-| `status` | `ok status proto=1 device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy monitors=lock,focus,mic,camera` |
+| `status` | `ok status proto=1 device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy monitors=lock,focus,mic,camera [focus=assertions\|menubar]` |
 | `led <mode> [<colour>] [<colour2>]` | `ok led` (sets the notify layer with no expiry) |
 | `notify <colour> for=<seconds> [mode=<mode>]` | `ok notify` |
 | `clear` | `ok clear` (drops the notify layer) |
