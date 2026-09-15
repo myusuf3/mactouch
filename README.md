@@ -6,7 +6,13 @@ that shows you what your Mac is doing.
 Hardware is a Seeed XIAO ESP32-S3 and a ZW101 fingerprint module, the same
 parts as [tinytouch](https://github.com/ZimengXiong/tinyTouch). The firmware,
 protocol and Mac software are written from scratch around one idea: keep the
-device dumb and put every decision in the Mac app.
+device dumb and put every decision in the Mac software.
+
+tinytouch, by Zimeng Xiong and released under the MIT license, was the
+reference for the sensor's packet protocol, the USB descriptor layout, and the
+case. This project would not exist without it.
+
+MIT licensed; see `LICENSE`.
 
 - `docs/DESIGN.md` architecture, security model, phases
 - `docs/PROTOCOL.md` the two text protocols
