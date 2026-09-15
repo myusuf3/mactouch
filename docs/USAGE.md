@@ -1,6 +1,6 @@
 # Using mactouch
 
-## Using it
+## Commands
 
 Every command below works with the daemon running. Most also work without it,
 talking to the device directly; `--direct` forces that even when the daemon is
