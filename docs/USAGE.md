@@ -86,11 +86,13 @@ mactouch monitor focus on
   default "when active" setting. Grant `mactouchd` Full Disk Access in System
   Settings to get the richer source.
 
-Settings persist across daemon restarts.
+Settings persist across daemon restarts. `mactouch doctor` reports which
+source the focus monitor ended up with.
 
 ### Diagnostics
 
 ```
+mactouch doctor              # verdicts with a fix each: daemon, device, sensor, fingers, focus source
 mactouch status              # daemon, device, firmware, sensor, ring, layers, monitors
 mactouch ping
 mactouch gpio                # levels of the unused XIAO pins

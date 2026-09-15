@@ -8,6 +8,7 @@ let usage = """
 usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
 
   status                          daemon, firmware, sensor, ring and touch state
+  doctor                          check-up with a fix for each problem
   ping
   led <mode> [colour] [colour2] [--for SECONDS]
                                   mode: off on breathe flash fadein fadeout
@@ -225,6 +226,7 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
 setlinebuf(stdout)
 do {
   let options = try parse(Array(CommandLine.arguments.dropFirst()))
+  if options.command[0] == "doctor" { exit(runDoctor(direct: options.direct, port: options.port)) }
   if !options.direct && ControlClient.isAvailable() {
     exit(try runViaDaemon(options.command))
   }
