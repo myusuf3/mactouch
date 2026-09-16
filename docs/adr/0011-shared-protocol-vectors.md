@@ -26,4 +26,4 @@ The cost is a second source of truth beside the prose in PROTOCOL.md and ADR-000
 
 The self-test proves the firmware's HMAC routine, not the key in the device's flash. A verifier that holds a stale copy of the device key still fails, and that failure is what the PAM module's pairing row in doctor will report.
 
-Verified on hardware: the flashed firmware answers `SELFTEST` with `OK`, and the previous firmware's `ERR COMMAND reason=unknown` shows in doctor as "cannot check" rather than a failure.
+Verified on hardware: the flashed firmware answers `SELFTEST` with `OK`, and the previous firmware's `ERR COMMAND reason=unknown` shows in doctor as "cannot check" rather than a failure. A real `PAIR` followed by a nonce `IDENTIFY` produced a MAC that verified against the exported key, and failed against a different slot, so the key in flash and the routine agree as well.
