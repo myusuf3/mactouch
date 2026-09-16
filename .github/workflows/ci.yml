@@ -17,6 +17,13 @@ jobs:
       - run: swift test
         working-directory: app
 
+  pam:
+    name: PAM module build and tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C pam all test
+
   vectors:
     name: Protocol vectors are current
     runs-on: ubuntu-latest
