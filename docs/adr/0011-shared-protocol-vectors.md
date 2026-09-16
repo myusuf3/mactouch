@@ -25,3 +25,5 @@ Drift between firmware and Swift becomes a red test instead of a field failure, 
 The cost is a second source of truth beside the prose in PROTOCOL.md and ADR-0009. The generator is the tie-break: if the prose and the file disagree, the file is what the code checks, and the prose is what gets fixed.
 
 The self-test proves the firmware's HMAC routine, not the key in the device's flash. A verifier that holds a stale copy of the device key still fails, and that failure is what the PAM module's pairing row in doctor will report.
+
+Verified on hardware: the flashed firmware answers `SELFTEST` with `OK`, and the previous firmware's `ERR COMMAND reason=unknown` shows in doctor as "cannot check" rather than a failure.
