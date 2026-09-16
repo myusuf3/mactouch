@@ -5,6 +5,9 @@ firmware/sdkconfig.old
 firmware/managed_components/
 firmware/dependencies.lock
 
+# pam module
+pam/build/
+
 # mac app (SwiftPM)
 app/.build/
 app/.swiftpm/
