@@ -102,6 +102,36 @@ mactouch cancel              # abort a running identify or enrolment
 mactouch reboot
 ```
 
+## sudo with a fingerprint
+
+```
+sudo scripts/pam-install.sh                 # pair, store the key root-only, enable for sudo
+sudo scripts/pam-install.sh --service su    # any other PAM service
+sudo scripts/pam-install.sh --repair        # pair again after a reflash that lost the key
+sudo scripts/pam-uninstall.sh [--purge]     # remove; --purge also deletes the stored key
+```
+
+The module is `auth sufficient`, so `sudo` asks the daemon for a fingerprint
+first. The ring breathes white; touch and the command runs. Wait it out,
+have no daemon running, or let anything else go wrong and sudo falls through
+to the password as before. A signature that fails to verify is logged and
+also falls through. Twenty seconds per request.
+
+Pairing needs a touch and the device releases its key once per boot, so a
+failed install means a replug before retrying. The key lives at
+`/etc/mactouch/<user>.key`, root only. Reflashing does not change it;
+erasing NVS does, and then `--repair` pairs again.
+
+On macOS the sudo stack includes `/etc/pam.d/sudo_local`, which survives OS
+updates, so that is where the line goes. If a configuration manager such as
+nix-darwin owns that file, the script puts the line in `/etc/pam.d/sudo`
+itself. An OS update can reset that file; `mactouch doctor` shows which
+services carry the line, and re-running the install script puts it back.
+
+Keep a root shell open while enabling this for sudo, and test from another
+terminal with `sudo -k && sudo true` before closing it. The install script
+prints the one-line rollback.
+
 ## Security model
 
 What the device holds: fingerprint templates, inside the sensor module, and a

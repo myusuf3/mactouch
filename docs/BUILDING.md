@@ -109,6 +109,17 @@ port=$(python scripts/wait-for-bootloader.py) && scripts/flash.sh "$port"
 After the first flash the board enumerates as "mactouch" and the yellow LED
 blinks once a second.
 
+## Build the PAM module
+
+```
+make -C pam all test
+```
+
+`pam/build/pam_mactouch.so` links only libpam and libSystem. The test pins
+the module to `docs/protocol-vectors.json` through the same header the
+firmware compiles in, then drives it against a fake daemon on a unix socket.
+`scripts/pam-install.sh` builds and installs it; see [USAGE](USAGE.md).
+
 ## Build and install the Mac side
 
 ```
