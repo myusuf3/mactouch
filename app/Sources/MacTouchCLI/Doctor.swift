@@ -71,6 +71,8 @@ func runDoctor(direct: Bool, port: String?) -> Int32 {
     }
   }
 
+  checks.append(pamCheck())
+
   if let prints = status?.int("prints") {
     checks.append(prints > 0
       ? Check(.ok, "fingers", "\(prints) enrolled")
@@ -95,6 +97,22 @@ func runDoctor(direct: Bool, port: String?) -> Int32 {
           "\(check.name.padding(toLength: 11, withPad: " ", startingAt: 0))\(check.detail)")
   }
   return checks.contains { $0.verdict == .bad } ? 1 : 0
+}
+
+/// Which PAM services name the module. The key itself is root-only, so this
+/// reports installation, not pairing state.
+private func pamCheck() -> Check {
+  let module = "/usr/local/lib/pam/pam_mactouch.so"
+  guard FileManager.default.fileExists(atPath: module) else {
+    return Check(.off, "sudo", "pam_mactouch not installed; sudo scripts/pam-install.sh")
+  }
+  let files = (try? FileManager.default.contentsOfDirectory(atPath: "/etc/pam.d")) ?? []
+  let services = files.sorted().filter { name in
+    (try? String(contentsOfFile: "/etc/pam.d/" + name, encoding: .utf8))?.contains(module) ?? false
+  }
+  return services.isEmpty
+    ? Check(.warn, "sudo", "module installed but no PAM service uses it; sudo scripts/pam-install.sh")
+    : Check(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
 }
 
 private func deviceCheck(connected: Bool, firmware: String?) -> Check {
