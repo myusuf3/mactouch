@@ -123,10 +123,12 @@ fingerprint it posts a macOS notification with the requester's reason, so you
 know what you are approving. See ADR-0003 for why this is a daemon and not the
 app.
 
-### MacTouch.app (later, AppKit menu bar)
+### MacTouch.app (later, SwiftUI menu bar)
 
 A client of the daemon's socket like any other. Menu: device status, idle
-colour, integrations on/off, enrol and delete fingers. Needs Xcode; deferred.
+colour, monitors on/off, a Settings window for fingers and diagnostics, and
+real notifications for requests. Builds with the command line tools; see
+[APP.md](APP.md) for the plan.
 
 ### mactouch CLI (`app/Sources/MacTouchCLI`)
 
