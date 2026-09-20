@@ -8,7 +8,7 @@ let package = Package(
     .library(name: "MacTouchKit", targets: ["MacTouchKit"]),
     .executable(name: "mactouch", targets: ["MacTouchCLI"]),
     .executable(name: "mactouchd", targets: ["MacTouchDaemon"]),
-    .executable(name: "MacTouch", targets: ["MacTouchApp"]),
+    .executable(name: "MacTouchApp", targets: ["MacTouchApp"]),
   ],
   targets: [
     .target(

@@ -153,7 +153,7 @@ scripts/bundle-app.sh
 open ~/Applications/MacTouch.app
 ```
 
-There is no Xcode project (ADR-0015). The script builds the `MacTouch`
+There is no Xcode project (ADR-0015). The script builds the `MacTouchApp`
 product in release, lays out `MacTouch.app` around the binary with an
 `Info.plist` that hides the Dock icon, signs it ad hoc and copies it to
 `~/Applications`, quitting a running copy first. The app is a client of the

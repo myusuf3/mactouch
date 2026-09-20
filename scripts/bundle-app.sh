@@ -2,7 +2,10 @@
 # Build MacTouch.app and install it in ~/Applications.
 #
 # There is no Xcode project: swift build makes the binary, this script lays
-# out the bundle around it, signs it ad hoc and copies it over. Re-run after
+# out the bundle around it, signs it ad hoc and copies it over. The product
+# is MacTouchApp because Xcode's build engine folds product names case-
+# insensitively and MacTouch would collide with the mactouch CLI; the
+# binary is renamed MacTouch inside the bundle. Re-run after
 # changing the app; it quits a running copy first. Ad-hoc signing is enough
 # on the Mac that built it; another Mac needs a Developer ID.
 set -euo pipefail
@@ -13,11 +16,11 @@ stage="$here/../app/.build/MacTouch.app"
 target="$HOME/Applications/MacTouch.app"
 
 cd "$here/../app"
-swift build -c release --product MacTouch 2>&1 | grep -E "error|Compiling|Build complete" | tail -3
+swift build -c release --product MacTouchApp 2>&1 | grep -E "error|Compiling|Build complete" | tail -3
 
 rm -rf "$stage"
 mkdir -p "$stage/Contents/MacOS"
-install -m 755 .build/release/MacTouch "$stage/Contents/MacOS/MacTouch"
+install -m 755 .build/release/MacTouchApp "$stage/Contents/MacOS/MacTouch"
 cat > "$stage/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
