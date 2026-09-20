@@ -8,7 +8,8 @@
 - **Next:** the menu bar app, planned in [APP.md](APP.md).
 - **Later:** AI-agent hooks that demand a fingerprint before destructive shell
   commands, tap and hold gestures mapped to Shortcuts, per-finger actions, Calendar countdowns, an SSH agent
-  with touch-to-sign, and possibly smart card emulation for login.
+  with touch-to-sign, and PIV smart card emulation for unlocking the screen
+  (ADR-0013). PAM cannot reach the lock screen; see ADR-0012.
 
 Known limitation: entering download mode from software does not work on this
 board revision, so every reflash needs the BOOT button.

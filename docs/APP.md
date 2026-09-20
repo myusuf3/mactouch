@@ -106,6 +106,34 @@ checked with a probe on the current toolchain. The pieces:
 Ad-hoc signing is fine on the machine that built it. Distribution to another
 Mac needs a Developer ID, which is out of scope until there is a release.
 
+## Packaging: the app ships the daemon
+
+The app bundles the daemon and the CLI without changing the process
+boundary. `MacTouch.app` carries three executables, `MacTouch`, `mactouchd`
+and `mactouch`, plus `Contents/Library/LaunchAgents/dev.mactouch.daemon.plist`
+whose `BundleProgram` points at the daemon inside the bundle. On first launch
+the app calls `SMAppService.agent(plistName:)` and `register()`, and macOS
+lists MacTouch under Login Items for one-time approval. The CLI gets a
+symlink into `~/.local/bin`.
+
+One artifact, one signature over all three binaries, uninstall by deleting
+the app. The socket path, the protocol, the PAM module and the CLI address
+the daemon by its socket, so none of them change. ADR-0003 holds: the app is
+a client, quitting it never touches the device.
+
+What stays outside the bundle: the PAM module and the key, root-owned under
+`/usr/local/lib/pam` and `/etc/mactouch`, installed by `pam-install.sh`,
+later triggered from Settings behind an admin prompt. The scripted install
+path (`install.sh`, `daemon.sh`) stays for checkouts without the app, running
+the same daemon binary; doctor's autostart row recognises either.
+
+Costs: moving the app breaks the agent until the app is launched again and
+re-registers, which it does on every launch. Full Disk Access is granted per
+binary, so the bundled daemon needs its own entry as today.
+
+Bundling is the last step, once the app exists to do the registering, so the
+working sudo setup does not move until the app is worth installing.
+
 ## Kit changes the app needs
 
 `ControlClient` is synchronous and blocks the calling thread, which suits the
@@ -138,8 +166,12 @@ Each step ships on its own and is verified against the running daemon.
 5. **Notifications.** Category, Cancel action, daemon handoff. Verify: run
    `mactouch identify --reason test`, see the notification, press Cancel,
    see exit code 2.
-6. **Login item and General pane.** `SMAppService`, show-in-menu-bar. Verify:
-   the app appears under Login Items; log out and in.
+6. **Login item and General pane.** `SMAppService.mainApp`, show-in-menu-bar.
+   Verify: the app appears under Login Items; log out and in.
+7. **Bundle the daemon.** Move the agent into the bundle, `bundle-app.sh`
+   writes the plist, the app registers it, `install.sh` becomes the dev path.
+   Verify: delete the hand-written plist, reboot, doctor is green and sudo
+   asks the ring.
 
 Steps 1 and 2 are small and unblock the rest. Step 5 is the one that changes
 what the user sees during a sudo, so it lands after the PAM module is stable.
