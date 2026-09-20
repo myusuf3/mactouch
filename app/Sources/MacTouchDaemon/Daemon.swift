@@ -15,6 +15,9 @@ final class Daemon {
   var applied: RingState?
   var busy: String?
   var busyConnection: ControlConnection?
+  /// Clients that said `hello ui=1`; while one is connected they show the
+  /// request, so the osascript notification stays quiet.
+  var uiClients: Set<UUID> = []
   var expiryTimer: DispatchSourceTimer?
   var monitors: Monitors!
 
@@ -27,7 +30,10 @@ final class Daemon {
       self?.queue.async { self?.handle(request, connection) }
     }
     server.onDisconnect = { [weak self] connection in
-      self?.queue.async { if self?.busyConnection === connection { self?.busyConnection = nil } }
+      self?.queue.async {
+        if self?.busyConnection === connection { self?.busyConnection = nil }
+        self?.uiClients.remove(connection.id)
+      }
     }
     try server.start()
     log("listening on \(server.path)")
@@ -178,8 +184,12 @@ final class Daemon {
       let nonce = request["nonce"]
       let prompt = request["prompt"].flatMap(LEDColour.init) ?? (nonce == nil ? .blue : .white)
       let reason = request["reason"] ?? (nonce == nil ? "A program asked for your fingerprint" : "sudo asked for your fingerprint")
-      runLong(verb, connection, timeout: seconds + 3) { device in
-        postNotification(title: "mactouch", body: reason)
+      let kind = nonce == nil ? "plain" : "nonce"
+      let notify = uiClients.isEmpty
+      runLong(verb, connection, timeout: seconds + 3) { [server] device in
+        server.broadcast(ControlLine.evt("request", [("state", "pending"), ("kind", kind), ("reason", reason)]))
+        defer { server.broadcast(ControlLine.evt("request", [("state", "done"), ("kind", kind)])) }
+        if notify { postNotification(title: "mactouch", body: reason) }
         return try device.request(.identify(timeoutMs: Int(seconds * 1000), prompt: prompt, nonce: nonce), timeout: seconds + 3)
       }
 
@@ -224,6 +234,10 @@ final class Daemon {
     case "events":
       connection.subscribed = true
       connection.send(ControlLine.evt("device", [("state", manager.isConnected ? "connected" : "absent")]))
+
+    case "hello":
+      if request["ui"] == "1" { uiClients.insert(connection.id) }
+      reply([("proto", "\(protocolVersion)")])
 
     default:
       fail("unknown")
