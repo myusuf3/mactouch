@@ -1,10 +1,6 @@
 import Foundation
 import MacTouchKit
 
-enum MonitorName: String, CaseIterable {
-  case lock, focus, mic, camera
-}
-
 /// The signal sources behind the policy layers. Each reports a ring state for
 /// its layer, or nil to clear it. Mic and camera share the privacy layer.
 final class Monitors {
