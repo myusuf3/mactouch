@@ -5,24 +5,68 @@ import MacTouchKit
 /// subscribed to `events` for the life of the app and reconnects when it
 /// drops; `status` runs on a short-lived second connection so the stream
 /// never waits on the device. Published properties change on the main queue.
-final class DaemonModel: ObservableObject {
-  @Published private(set) var daemonRunning = false
-  @Published private(set) var deviceConnected = false
-  @Published private(set) var sensor: String?
-  @Published private(set) var prints: Int?
+public final class DaemonModel: ObservableObject {
+  @Published public private(set) var daemonRunning = false
+  @Published public private(set) var deviceConnected = false
+  @Published public private(set) var sensor: String?
+  @Published public private(set) var prints: Int?
   /// The ring as the daemon spells it, `mode:colour[:colour2]`.
-  @Published private(set) var ring: String?
+  @Published public private(set) var ring: String?
   /// Active policy layers, lowest first; the last one owns the ring.
-  @Published private(set) var layers: [String] = []
+  @Published public private(set) var layers: [String] = []
+  @Published public private(set) var idle: LEDColour?
+  @Published public private(set) var monitors: Set<MonitorName> = []
+
+  public var notifyActive: Bool { layers.contains("notify") }
 
   private let path: String
+  private let requests = DispatchQueue(label: "mactouch.requests")
 
-  init(path: String = ControlSocketPath.default) {
+  public init(path: String = ControlSocketPath.default) {
     self.path = path
     let thread = Thread { [weak self] in self?.streamEvents() }
     thread.name = "mactouch.events"
     thread.start()
   }
+
+  // MARK: actions
+
+  public func setIdle(_ colour: LEDColour) {
+    send(ControlRequest(verb: "idle", positional: [colour.rawValue]))
+  }
+
+  public func setMonitor(_ name: MonitorName, enabled: Bool) {
+    send(ControlRequest(verb: "monitor", positional: [name.rawValue, enabled ? "on" : "off"]))
+  }
+
+  public func clearNotify() {
+    send(ControlRequest(verb: "clear"))
+  }
+
+  /// Loads the launch agent install.sh wrote; the event stream picks the
+  /// daemon up on its next retry.
+  public func startDaemon() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    process.arguments = ["bootstrap", "gui/\(getuid())", NSHomeDirectory() + "/Library/LaunchAgents/dev.mactouch.daemon.plist"]
+    try? process.run()
+  }
+
+  /// One request off the main queue, then a status refresh so the menu shows
+  /// what the daemon did rather than what was asked. A menu has nowhere to
+  /// put an error; a rejected request simply leaves the state as it was.
+  private func send(_ request: ControlRequest) {
+    requests.async { [weak self] in
+      guard let self else { return }
+      if let client = try? ControlClient(path: path) {
+        defer { client.close() }
+        _ = try? client.request(request)
+      }
+      refreshStatus()
+    }
+  }
+
+  // MARK: events
 
   private func streamEvents() {
     while true {
@@ -67,6 +111,8 @@ final class DaemonModel: ObservableObject {
       model.deviceConnected = status["device"] == "connected"
       model.ring = status["ring"]
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
+      model.idle = status["idle"].flatMap(LEDColour.init)
+      model.monitors = Set(status["monitors"]?.split(separator: ",").compactMap { MonitorName(rawValue: String($0)) } ?? [])
       if !model.deviceConnected {
         model.sensor = nil
         model.prints = nil

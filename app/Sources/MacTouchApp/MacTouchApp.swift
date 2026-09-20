@@ -1,4 +1,5 @@
 import MacTouchKit
+import MacTouchModel
 import SwiftUI
 
 /// The menu bar app: a view over mactouchd, one more client of its socket.
@@ -21,9 +22,36 @@ struct StatusMenu: View {
   var body: some View {
     Text(statusLine)
     if let ringLine { Text(ringLine) }
+    if !model.daemonRunning {
+      Button("Start Daemon") { model.startDaemon() }
+    }
     Divider()
+    if model.daemonRunning {
+      Picker("Idle Colour", selection: idleColour) {
+        ForEach(LEDColour.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+      }
+      .pickerStyle(.menu)
+      .disabled(!model.deviceConnected)
+      Menu("Monitors") {
+        ForEach(MonitorName.allCases, id: \.self) { name in
+          Toggle(name.label, isOn: monitor(name))
+        }
+      }
+      if model.notifyActive {
+        Button("Clear Notify Layer") { model.clearNotify() }
+      }
+      Divider()
+    }
     Button("Quit MacTouch") { NSApplication.shared.terminate(nil) }
       .keyboardShortcut("q")
+  }
+
+  private var idleColour: Binding<LEDColour> {
+    Binding(get: { model.idle ?? .off }, set: { model.setIdle($0) })
+  }
+
+  private func monitor(_ name: MonitorName) -> Binding<Bool> {
+    Binding(get: { model.monitors.contains(name) }, set: { model.setMonitor(name, enabled: $0) })
   }
 
   private var statusLine: String {

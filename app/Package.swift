@@ -21,7 +21,9 @@ let package = Package(
     ),
     .executableTarget(name: "MacTouchCLI", dependencies: ["MacTouchKit"]),
     .executableTarget(name: "MacTouchDaemon", dependencies: ["MacTouchKit"]),
-    .executableTarget(name: "MacTouchApp", dependencies: ["MacTouchKit"]),
+    .target(name: "MacTouchModel", dependencies: ["MacTouchKit"]),
+    .executableTarget(name: "MacTouchApp", dependencies: ["MacTouchKit", "MacTouchModel"]),
     .testTarget(name: "MacTouchKitTests", dependencies: ["MacTouchKit"]),
+    .testTarget(name: "MacTouchModelTests", dependencies: ["MacTouchModel"]),
   ]
 )
