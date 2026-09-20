@@ -146,3 +146,18 @@ replugged. Logs go to `~/Library/Logs/mactouch/mactouchd.log`. Re-run the
 script after changing the daemon. `scripts/daemon.sh start|stop|restart|status`
 controls the agent.
 
+## Build the menu bar app
+
+```
+scripts/bundle-app.sh
+open ~/Applications/MacTouch.app
+```
+
+There is no Xcode project (ADR-0015). The script builds the `MacTouch`
+product in release, lays out `MacTouch.app` around the binary with an
+`Info.plist` that hides the Dock icon, signs it ad hoc and copies it to
+`~/Applications`, quitting a running copy first. The app is a client of the
+daemon's socket, so it needs `mactouchd` running to show anything beyond
+"Daemon not running". Ad-hoc signing is enough on the Mac that built it;
+another Mac needs a Developer ID.
+

@@ -5,7 +5,9 @@
   agent install, shared protocol vectors with a firmware self-test, `doctor`,
   and the PAM module with its install script. All verified on hardware,
   including a passwordless `su` on a touch.
-- **Next:** the menu bar app, planned in [APP.md](APP.md).
+- **In progress:** the menu bar app, planned in [APP.md](APP.md). The daemon
+  groundwork and the app skeleton are in; the menu shows daemon, device and
+  ring state. Menu actions, Settings, notifications and login item follow.
 - **Later:** AI-agent hooks that demand a fingerprint before destructive shell
   commands, tap and hold gestures mapped to Shortcuts, per-finger actions, Calendar countdowns, an SSH agent
   with touch-to-sign, and PIV smart card emulation for unlocking the screen
