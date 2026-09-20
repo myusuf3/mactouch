@@ -26,6 +26,11 @@ while (( $# )); do
 done
 
 (( EUID == 0 )) || { print -u2 "run with sudo"; exit 2 }
+if [[ "$service" == screensaver || "$service" == authorization ]]; then
+  print -u2 "$service runs inside loginwindow, a platform binary that loads only Apple-signed code;"
+  print -u2 "the kernel rejects third-party PAM modules there. See docs/USAGE.md."
+  exit 2
+fi
 user="${SUDO_USER:-}"
 [[ -n "$user" && "$user" != root ]] || { print -u2 "run with sudo from your own account, not a root shell"; exit 2 }
 home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{print $2}')"
@@ -95,10 +100,9 @@ fi
 
 print
 print "Done. Keep this terminal open and test from another one:"
-if [[ "$service" == sudo ]]; then
-  print "  sudo -k && sudo true      # ring breathes white; touch, or wait and type the password"
-else
-  print "  $service $user            # ring breathes white; touch, or wait and type the password"
-fi
+case "$service" in
+  sudo) print "  sudo -k && sudo true      # ring breathes white; touch, or wait and type the password" ;;
+  *) print "  $service $user            # ring breathes white; touch, or wait and type the password" ;;
+esac
 print "Undo with: sudo $here/pam-uninstall.sh --service $service"
 print "Emergency: sudo cp $backup $pam_file"

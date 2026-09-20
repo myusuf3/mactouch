@@ -1,7 +1,10 @@
 #define __STDC_WANT_LIB_EXT1__ 1
-// pam_mactouch: `auth sufficient pam_mactouch.so` makes sudo accept a
-// fingerprint. Anything short of a verified signature returns PAM_IGNORE so
-// the stack falls through to the password.
+// pam_mactouch: `auth sufficient pam_mactouch.so` makes sudo, or the lock
+// screen, accept a fingerprint. Anything short of a verified signature
+// returns PAM_IGNORE so the stack falls through to the password. When the
+// caller already collected a password (loginwindow's use_first_pass stacks)
+// the module steps aside at once, so typing a password never waits on the
+// ring; an empty field submitted with Return is what asks for the touch.
 #define PAM_SM_AUTH
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
@@ -18,6 +21,9 @@
 
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv) {
   (void)flags; (void)argc; (void)argv;
+  const char *authtok = NULL;
+  if (pam_get_item(pamh, PAM_AUTHTOK, (const void **)&authtok) == PAM_SUCCESS && authtok && *authtok) return PAM_IGNORE;
+
   const char *user = NULL;
   if (pam_get_user(pamh, &user, NULL) != PAM_SUCCESS || !user || !*user) return PAM_IGNORE;
   if (strchr(user, '/') || strstr(user, "..")) return PAM_IGNORE;
