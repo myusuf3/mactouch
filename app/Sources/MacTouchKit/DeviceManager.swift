@@ -20,7 +20,7 @@ public final class DeviceManager {
   public var isConnected: Bool { device != nil }
 
   public func start() {
-    queue.async {
+    queue.async { [self] in
       guard !self.running else { return }
       self.running = true
       self.scan()
