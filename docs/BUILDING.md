@@ -37,7 +37,7 @@ reaction and no touch events while another command is using the sensor.
 
 You need a Mac and two toolchains.
 
-**macOS 13 or later** with the Xcode command line tools. Xcode itself is not
+**macOS 14 or later** with the Xcode command line tools. Xcode itself is not
 required; the Mac side is a Swift package that builds with
 `xcode-select --install`. Swift 5.9 or later.
 

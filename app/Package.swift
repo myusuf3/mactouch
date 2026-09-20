@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "MacTouch",
-  platforms: [.macOS(.v13)],
+  platforms: [.macOS(.v14)],
   products: [
     .library(name: "MacTouchKit", targets: ["MacTouchKit"]),
     .executable(name: "mactouch", targets: ["MacTouchCLI"]),

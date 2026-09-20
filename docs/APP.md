@@ -7,7 +7,7 @@ documentation and Human Interface Guidelines through sosumi.ai.
 
 ## What it is
 
-A SwiftUI `MenuBarExtra` app, macOS 13 and later, that is one more client of
+A SwiftUI `MenuBarExtra` app, macOS 14 and later, that is one more client of
 `mactouchd`'s control socket (ADR-0003). It never touches the serial device.
 Quitting or crashing it changes nothing about approvals, monitors or the ring.
 
