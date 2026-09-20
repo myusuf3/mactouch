@@ -12,7 +12,7 @@ The rest of the project is a Swift package with three targets and a test target,
 
 ## Decision
 
-The app is a fourth `executableTarget`, `MacTouchApp`, producing the `MacTouch` executable, depending on MacTouchKit like the CLI and daemon do. `scripts/bundle-app.sh` turns the binary into `MacTouch.app`: it writes an `Info.plist` with `CFBundleIdentifier dev.mactouch.app` and `LSUIElement` so there is no Dock icon, ad-hoc codesigns the bundle, and installs it in `~/Applications`, quitting a running copy first. This is the same shape as `install.sh` for the daemon: a script owns the install, the package owns the code.
+The app is two targets. `MacTouchModel` is a library holding the daemon-facing model, so tests can import it; `MacTouchApp` is the `executableTarget` with the SwiftUI scenes and views, depending on MacTouchKit and the model. The split is not taste: the command line tools' SwiftPM cannot link a test bundle against an `@main` executable, and a library is the standard shape for a testable SwiftPM app. `scripts/bundle-app.sh` turns the binary into `MacTouch.app`: it writes an `Info.plist` with `CFBundleIdentifier dev.mactouch.app` and `LSUIElement` so there is no Dock icon, ad-hoc codesigns the bundle, and installs it in `~/Applications`, quitting a running copy first. This is the same shape as `install.sh` for the daemon: a script owns the install, the package owns the code.
 
 The deployment floor stays at macOS 13, which the package already declares and which `MenuBarExtra` requires. `@Observable` needs macOS 14, so the app's model is an `ObservableObject`; the floor is raised when a feature needs it, not for a nicer macro.
 
@@ -21,6 +21,8 @@ Ad-hoc signing is enough for the machine that built the app. Distribution to ano
 ## Consequences
 
 One build system, one command, one CI job. `swift build` still builds everything, and the SwiftUI target compiles on the CI runner without change.
+
+Product names must differ case-insensitively. Xcode's build engine, which the Xcode toolchain's `swift build` uses, folds `MacTouch` and `mactouch` into one build folder and merges their sources; the command line tools' engine does not, so the collision showed up only on one toolchain. The app product is therefore `MacTouchApp`, renamed to `MacTouch` by the bundle script.
 
 Anything Xcode would have done through a checkbox is a line in the script: an entitlement, a URL scheme, an icon. The icon is the first gap; a menu-bar-only app shows it only in Finder and Login Items, so the skeleton ships without one and it is added when the login item lands.
 

@@ -124,13 +124,15 @@ know what you are approving, unless the app has said `hello ui=1` on the
 socket and shows the request itself (ADR-0014). See ADR-0003 for why this is a
 daemon and not the app.
 
-### MacTouch.app (`app/Sources/MacTouchApp`, SwiftUI menu bar)
+### MacTouch.app (`app/Sources/MacTouchApp` and `MacTouchModel`, SwiftUI menu bar)
 
-A client of the daemon's socket like any other. `DaemonModel` keeps one
-connection on `events`, reconnecting when the daemon restarts, and the
-`MenuBarExtra` menu renders it: a status line and a ring line today, with
-idle colour, monitor toggles, a Settings window for fingers and diagnostics,
-and real notifications for requests to follow. Built by
+A client of the daemon's socket like any other. `DaemonModel`, in its own
+library target so it can be tested against a fake daemon, keeps one
+connection on `events`, reconnecting when the daemon restarts, and runs menu
+actions as socket requests off the main queue. The `MenuBarExtra` menu
+renders it: status and ring lines, the idle colour submenu, monitor toggles,
+and a clear for the notify layer, with a Settings window for fingers and
+diagnostics and real notifications for requests to follow. Built by
 `scripts/bundle-app.sh` with the command line tools, no Xcode project
 (ADR-0015); see [APP.md](APP.md) for the plan.
 
