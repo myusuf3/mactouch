@@ -13,6 +13,9 @@ struct MacTouchApp: App {
     MenuBarExtra("MacTouch", systemImage: "touchid") {
       StatusMenu(model: model)
     }
+    Settings {
+      SettingsView(model: model)
+    }
   }
 }
 
@@ -42,6 +45,8 @@ struct StatusMenu: View {
       }
       Divider()
     }
+    SettingsLink { Text("Settings…") }
+      .keyboardShortcut(",")
     Button("Quit MacTouch") { NSApplication.shared.terminate(nil) }
       .keyboardShortcut("q")
   }

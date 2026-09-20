@@ -1,11 +1,21 @@
 import Foundation
 import MacTouchKit
 
-/// What the menu shows, fed by mactouchd's event stream. One connection stays
+/// What the app shows, fed by mactouchd's event stream. One connection stays
 /// subscribed to `events` for the life of the app and reconnects when it
-/// drops; `status` runs on a short-lived second connection so the stream
-/// never waits on the device. Published properties change on the main queue.
+/// drops; requests run one at a time on `requests`, each on a short-lived
+/// connection, so the stream never waits on the device and the main queue
+/// never waits on the socket. Published properties change on the main queue.
 public final class DaemonModel: ObservableObject {
+  public enum Enrolment: Equatable {
+    case idle
+    /// `step` is the daemon's `touch`, `lift`, `touch_again` or `processing`,
+    /// nil until the first one arrives.
+    case running(step: String?)
+    case done(slot: Int)
+    case failed(String)
+  }
+
   @Published public private(set) var daemonRunning = false
   @Published public private(set) var deviceConnected = false
   @Published public private(set) var sensor: String?
@@ -17,13 +27,27 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var idle: LEDColour?
   @Published public private(set) var monitors: Set<MonitorName> = []
 
+  @Published public private(set) var slots: [Int] = []
+  @Published public private(set) var capacity = 20
+  @Published public private(set) var enrolment: Enrolment = .idle
+  /// Names people give their fingers, kept in the app's defaults; the
+  /// device knows only slot numbers.
+  @Published public private(set) var names: [Int: String]
+  @Published public private(set) var health: HealthReport?
+
   public var notifyActive: Bool { layers.contains("notify") }
+  public var firstFreeSlot: Int? { (1...capacity).first { !slots.contains($0) } }
 
   private let path: String
+  private let defaults: UserDefaults
+  private static let namesKey = "slotNames"
   private let requests = DispatchQueue(label: "mactouch.requests")
 
-  public init(path: String = ControlSocketPath.default) {
+  public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard) {
     self.path = path
+    self.defaults = defaults
+    let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
+    names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
     let thread = Thread { [weak self] in self?.streamEvents() }
     thread.name = "mactouch.events"
     thread.start()
@@ -42,6 +66,74 @@ public final class DaemonModel: ObservableObject {
   public func clearNotify() {
     send(ControlRequest(verb: "clear"))
   }
+
+  // MARK: fingers
+
+  public func refreshSlots() {
+    requests.async { [weak self] in self?.loadSlots() }
+  }
+
+  /// Enrols into the first free slot. The daemon streams the steps on the
+  /// request's own connection, so they arrive here and nowhere else.
+  public func enrol() {
+    if case .running = enrolment { return }
+    guard let slot = firstFreeSlot else { return }
+    enrolment = .running(step: nil)
+    requests.async { [weak self] in
+      guard let self else { return }
+      do {
+        let client = try ControlClient(path: path)
+        defer { client.close() }
+        _ = try client.request(ControlRequest(verb: "enroll", values: ["slot": "\(slot)"]), timeout: 55) { name, fields in
+          guard name == "enroll" else { return }
+          self.publish { $0.enrolment = .running(step: fields["step"]) }
+        }
+        publish { $0.enrolment = .done(slot: slot) }
+      } catch {
+        let reason = describe(error)
+        publish { $0.enrolment = .failed(reason) }
+      }
+      loadSlots()
+      refreshStatus()
+    }
+  }
+
+  public func delete(slot: Int) {
+    send(ControlRequest(verb: "delete", values: ["slot": "\(slot)"]))
+    requests.async { [weak self] in self?.loadSlots() }
+    rename(slot, to: "")
+  }
+
+  public func rename(_ slot: Int, to name: String) {
+    names[slot] = name.isEmpty ? nil : name
+    defaults.set(Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) }), forKey: Self.namesKey)
+  }
+
+  private func loadSlots() {
+    guard let client = try? ControlClient(path: path) else { return }
+    defer { client.close() }
+    guard let reply = try? client.request(ControlRequest(verb: "slots")) else { return }
+    let used = reply["used"]?.split(separator: ",").compactMap { Int($0) } ?? []
+    let capacity = reply.int("capacity")
+    publish { model in
+      model.slots = used
+      if let capacity { model.capacity = capacity }
+    }
+  }
+
+  // MARK: diagnostics
+
+  /// The same check-up as `mactouch doctor`, including the firmware
+  /// self-test, so it takes a device round trip.
+  public func refreshHealth() {
+    requests.async { [weak self] in
+      guard let self else { return }
+      let report = HealthReport.viaDaemon(at: path)
+      publish { $0.health = report }
+    }
+  }
+
+  // MARK: daemon
 
   /// Loads the launch agent install.sh wrote; the event stream picks the
   /// daemon up on its next retry.
@@ -124,5 +216,10 @@ public final class DaemonModel: ObservableObject {
 
   private func publish(_ change: @escaping (DaemonModel) -> Void) {
     DispatchQueue.main.async { change(self) }
+  }
+
+  private func describe(_ error: Error) -> String {
+    if case ControlError.rejected(_, let reason) = error { return reason }
+    return "\(error)"
   }
 }
