@@ -120,8 +120,9 @@ The device key is 32 random bytes generated on first boot and stored in NVS.
 Owns the device. Runs the monitors and the policy stack, serves the control
 socket, and is started by launchd at login. When something asks for a
 fingerprint it posts a macOS notification with the requester's reason, so you
-know what you are approving. See ADR-0003 for why this is a daemon and not the
-app.
+know what you are approving, unless the app has said `hello ui=1` on the
+socket and shows the request itself (ADR-0014). See ADR-0003 for why this is a
+daemon and not the app.
 
 ### MacTouch.app (later, SwiftUI menu bar)
 

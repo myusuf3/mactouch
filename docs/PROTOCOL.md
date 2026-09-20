@@ -101,8 +101,10 @@ are one at a time and a second gets `err ... reason=busy`.
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
-| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent` and `evt ring state=<mode>:<colour>` |
+| `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |
+| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent`, `evt ring state=<mode>:<colour>` and, around every identify, `evt request state=pending kind=plain\|nonce reason=<text>` then `evt request state=done kind=...` |
 
 `identify` from the socket posts a macOS notification with the reason text so
-the user knows what they are approving. PAM requests pass `nonce`, and the
+the user knows what they are approving, unless a `hello ui=1` client is
+connected to show the request instead. PAM requests pass `nonce`, and the
 daemon uses the white prompt colour for them.

@@ -61,7 +61,9 @@ mactouch events              # stream: touch down/up, tap count, hold, match, no
 mactouch watch off
 ```
 
-Events also carry the daemon's own `device connected|absent` and `ring` lines.
+Events also carry the daemon's own `device connected|absent` and `ring` lines,
+and a `request pending|done` pair around every fingerprint request with the
+requester's reason.
 Touch events pause while the sensor is being polled for images, which is why
 none appear during an identify or enrolment.
 
