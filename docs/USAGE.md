@@ -67,6 +67,14 @@ requester's reason.
 Touch events pause while the sensor is being polled for images, which is why
 none appear during an identify or enrolment.
 
+### Menu bar app
+
+`scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. Its menu
+shows the daemon, device and ring state, sets the idle colour, toggles the
+monitors and clears the notify layer. Settings (⌘,) has Fingers, where you
+enrol, name and delete fingers, and Diagnostics, the doctor rows kept live.
+Everything the app does the CLI does too; it is a view over the daemon.
+
 ### Monitors
 
 ```

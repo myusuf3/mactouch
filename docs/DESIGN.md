@@ -131,8 +131,11 @@ library target so it can be tested against a fake daemon, keeps one
 connection on `events`, reconnecting when the daemon restarts, and runs menu
 actions as socket requests off the main queue. The `MenuBarExtra` menu
 renders it: status and ring lines, the idle colour submenu, monitor toggles,
-and a clear for the notify layer, with a Settings window for fingers and
-diagnostics and real notifications for requests to follow. Built by
+and a clear for the notify layer. The Settings window has a Fingers pane
+(enrol into the first free slot with the daemon's live steps, name slots in
+the app's defaults, delete with confirmation) and a Diagnostics pane that
+shows the `HealthReport` rows doctor prints. Real notifications for requests
+and the login item follow. Built by
 `scripts/bundle-app.sh` with the command line tools, no Xcode project
 (ADR-0015); see [APP.md](APP.md) for the plan.
 
