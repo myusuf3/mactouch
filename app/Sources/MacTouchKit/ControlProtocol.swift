@@ -85,17 +85,22 @@ enum TaggedLine {
   case evt(String, Fields)
 
   static func parse(_ raw: String, ok: String, err: String, evt: String) -> TaggedLine? {
-    let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    var line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    var reason: String?
+    if let range = line.range(of: "reason=") {
+      reason = String(line[range.upperBound...])
+      line = String(line[..<range.lowerBound])
+    }
     var tokens = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     guard tokens.count >= 2 else { return nil }
     let tag = tokens.removeFirst()
     let verb = tokens.removeFirst()
+    var parsed = fields(tokens)
+    if let reason { parsed.values["reason"] = reason }
     switch tag {
-    case ok: return .ok(verb, fields(tokens))
-    case evt: return .evt(verb, fields(tokens))
-    case err:
-      if let range = line.range(of: "reason=") { return .err(verb, String(line[range.upperBound...])) }
-      return .err(verb, tokens.joined(separator: " "))
+    case ok: return .ok(verb, parsed)
+    case evt: return .evt(verb, parsed)
+    case err: return .err(verb, reason ?? tokens.joined(separator: " "))
     default: return nil
     }
   }

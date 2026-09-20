@@ -35,6 +35,11 @@ import Testing
             == .evt(name: "match", fields: Fields(values: ["slot": "1", "score": "900"])))
     #expect(ControlLine.parse("OK STATUS x=1") == nil)
   }
+
+  @Test func reasonRunsToEndOfLineInEvents() {
+    #expect(ControlLine.parse("evt request state=pending kind=plain reason=deploy to prod, please")
+            == .evt(name: "request", fields: Fields(values: ["state": "pending", "kind": "plain", "reason": "deploy to prod, please"])))
+  }
 }
 
 @Suite struct ControlSocketRoundTrip {
