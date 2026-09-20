@@ -128,6 +128,15 @@ nix-darwin owns that file, the script puts the line in `/etc/pam.d/sudo`
 itself. An OS update can reset that file; `mactouch doctor` shows which
 services carry the line, and re-running the install script puts it back.
 
+**Not the lock screen.** The lock screen is drawn by `loginwindow`, an Apple
+platform binary that loads only Apple-signed code. It rejects every
+third-party PAM module, this one included, and logs
+`Library Validation failed ... mapping process is a platform binary, but
+mapped file is not`. `sudo` and `su` carry an entitlement that lifts that
+check, which is why they work. The install script refuses
+`--service screensaver` for this reason. Unlocking the Mac by touch needs a
+different mechanism; see the roadmap.
+
 Keep a root shell open while enabling this for sudo, and test from another
 terminal with `sudo -k && sudo true` before closing it. The install script
 prints the one-line rollback.
