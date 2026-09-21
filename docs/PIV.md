@@ -149,9 +149,15 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    agreement checked out through `scripts/apdu.py`. `ssh-keygen -D
    /usr/lib/ssh-keychain.dylib` reports "cannot read public key from
    pkcs11" against an unpaired token; it is not a check this step relies on.
-4. **Finger gate.** Signing waits for a match with CCID time extensions,
-   the ring breathes, `EVT PIV` on the link. Verify: the ssh signature waits
-   for a touch and fails without one; the app's panel shows during it.
+4. **Finger gate.** Signing and key agreement need a match: one inside the
+   ten-second window a touch opens, good for four operations, or a fresh one
+   waited for up to fifteen seconds with CCID time extensions while the ring
+   breathes white; `EVT PIV state=pending|done` on the link, and the daemon
+   takes the ring back afterwards. Verify with `scripts/apdu.py`: a
+   signature waits for a touch and fails with `6982` without one. Done
+   2026-09-21: with a touch the wait ended in a match and a signature; with
+   none the host was held fifteen seconds, PC/SC did not time out, and the
+   card answered `6982`. The app's panel for PIV waits is step 8.
 5. **CLI, daemon and doctor.** `mactouch piv` commands, `piv=` in status,
    the doctor row, `pair` and `unpair` around `sc_auth`. Verify against
    `sc_auth list`.

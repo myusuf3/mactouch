@@ -58,6 +58,7 @@ response.
 | `EVT MATCH slot=N score=S` | watch mode, or an identify attempt succeeded |
 | `EVT NOMATCH` | a finger was read but matched no template |
 | `EVT ENROLL step=touch\|lift\|touch_again\|processing` | enrolment progress |
+| `EVT PIV state=pending` / `EVT PIV state=done result=match\|timeout\|sensor\|busy` | the smart card is waiting for a finger before it signs, and how that ended. The ring breathes white meanwhile. |
 
 ### Example session
 
