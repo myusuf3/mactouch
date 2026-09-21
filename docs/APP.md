@@ -49,10 +49,12 @@ not running" and the menu offers "Start daemon", which runs
 `scripts/daemon.sh start`'s launchctl call.
 
 The extra can be hidden from Settings through the `isInserted` binding, per
-the HIG rule that people decide whether an extra sits in their menu bar. A
-menu-bar-only app quits when its extra is removed, so hiding is offered only
-alongside the login item toggle, with a note that the app keeps running for
-notifications.
+the HIG rule that people decide whether an extra sits in their menu bar. The
+app keeps running without it and still shows the request panel; checked on
+macOS 26, hiding through the binding does not terminate the app, only
+dragging the extra out does. The way back is to open MacTouch again from
+Finder or Spotlight: the reopen event turns the icon back on, and the
+Settings footer says so.
 
 ## Settings window
 

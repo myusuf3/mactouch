@@ -71,8 +71,10 @@ none appear during an identify or enrolment.
 
 `scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. Its menu
 shows the daemon, device and ring state, sets the idle colour, toggles the
-monitors and clears the notify layer. Settings (⌘,) has Fingers, where you
-enrol, name and delete fingers, and Diagnostics, the doctor rows kept live.
+monitors and clears the notify layer. Settings (⌘,) has General for the
+idle colour, launch at login and hiding the icon (open MacTouch again to
+bring it back), Fingers, where you enrol, name and delete fingers, and
+Diagnostics, the doctor rows kept live.
 While the app runs, a fingerprint request shows as a small floating panel in
 the centre of the screen with the requester's reason and a Cancel button, in
 place of the daemon's plain popup, and it stays visible under a Focus mode. Everything the app does the CLI does too; it is
