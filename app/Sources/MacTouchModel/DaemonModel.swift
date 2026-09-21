@@ -151,17 +151,6 @@ public final class DaemonModel: ObservableObject {
     send(ControlRequest(verb: "cancel"))
   }
 
-  // MARK: daemon
-
-  /// Loads the launch agent install.sh wrote; the event stream picks the
-  /// daemon up on its next retry.
-  public func startDaemon() {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    process.arguments = ["bootstrap", "gui/\(getuid())", NSHomeDirectory() + "/Library/LaunchAgents/dev.mactouch.daemon.plist"]
-    try? process.run()
-  }
-
   /// One request off the main queue, then a status refresh so the menu shows
   /// what the daemon did rather than what was asked. A menu has nowhere to
   /// put an error; a rejected request simply leaves the state as it was.

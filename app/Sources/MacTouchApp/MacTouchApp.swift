@@ -8,6 +8,7 @@ import SwiftUI
 @main
 struct MacTouchApp: App {
   @StateObject private var model: DaemonModel
+  @StateObject private var agent: DaemonAgent
   @StateObject private var loginItem = LoginItem()
   @NSApplicationDelegateAdaptor private var delegate: AppDelegate
   /// The HIG leaves it to people whether an extra sits in their menu bar.
@@ -18,12 +19,15 @@ struct MacTouchApp: App {
   init() {
     let model = DaemonModel()
     _model = StateObject(wrappedValue: model)
+    let agent = DaemonAgent()
+    _agent = StateObject(wrappedValue: agent)
     requestPanel = RequestPanel(model: model)
+    agent.install()
   }
 
   var body: some Scene {
     MenuBarExtra("MacTouch", systemImage: "touchid", isInserted: $showInMenuBar) {
-      StatusMenu(model: model)
+      StatusMenu(model: model, agent: agent)
     }
     Settings {
       SettingsView(model: model, loginItem: loginItem)
@@ -35,21 +39,29 @@ let showInMenuBarKey = "showInMenuBar"
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Opening the app while it already runs, from Finder or Spotlight, is the
-  /// way back once the menu bar icon has been hidden.
+  /// way back once the menu bar icon has been hidden, and how daemon.sh
+  /// starts the bundled agent.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
     UserDefaults.standard.set(true, forKey: showInMenuBarKey)
+    DaemonAgent().register()
     return true
   }
 }
 
 struct StatusMenu: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
 
   var body: some View {
     Text(statusLine)
+      .onAppear { agent.refresh() }
     if let ringLine { Text(ringLine) }
     if !model.daemonRunning {
-      Button("Start Daemon") { model.startDaemon() }
+      if agent.status == .requiresApproval {
+        Button("Allow MacTouch in Login Items…") { agent.openLoginItems() }
+      } else {
+        Button("Start Daemon") { agent.register() }
+      }
     }
     Divider()
     if model.daemonRunning {
