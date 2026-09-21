@@ -16,7 +16,7 @@ The app is two targets. `MacTouchModel` is a library holding the daemon-facing m
 
 The deployment floor is macOS 14. The package started at 13, the minimum for `MenuBarExtra`, and the model was written as an `ObservableObject` rather than `@Observable` so as not to raise the floor for a nicer macro. The Settings window raised it: `SettingsLink` is the supported way to open the Settings scene from a menu bar extra and is macOS 14 only, and the alternative is a private selector. The model stays an `ObservableObject`, because it works.
 
-Ad-hoc signing is enough for the machine that built the app. Distribution to another Mac needs a Developer ID and notarisation, which is a release concern and out of scope until there is a release.
+The bundle script signs with an "Apple Development" identity when the keychain has one and ad hoc otherwise. Ad hoc is enough for everything the app does today; the identity is preferred because it is stable across builds, and because `UNUserNotificationCenter` refuses ad-hoc signed bundles outright ("Notifications are not allowed for this application"), which is one of the reasons the request UI is a panel (ADR-0016). Distribution to another Mac needs a Developer ID and notarisation, which is a release concern and out of scope until there is a release.
 
 ## Consequences
 

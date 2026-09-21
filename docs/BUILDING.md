@@ -155,9 +155,13 @@ open ~/Applications/MacTouch.app
 
 There is no Xcode project (ADR-0015). The script builds the `MacTouchApp`
 product in release, lays out `MacTouch.app` around the binary with an
-`Info.plist` that hides the Dock icon, signs it ad hoc and copies it to
+`Info.plist` that hides the Dock icon, signs it and copies it to
 `~/Applications`, quitting a running copy first. The app is a client of the
 daemon's socket, so it needs `mactouchd` running to show anything beyond
-"Daemon not running". Ad-hoc signing is enough on the Mac that built it;
-another Mac needs a Developer ID.
+"Daemon not running".
+
+Signing uses an "Apple Development" identity from your keychain when there
+is one, or the identity named in `MACTOUCH_SIGN_IDENTITY`, and falls back to
+ad hoc, which is enough on the Mac that built it. Another Mac needs a
+Developer ID.
 

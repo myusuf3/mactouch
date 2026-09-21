@@ -121,7 +121,7 @@ Owns the device. Runs the monitors and the policy stack, serves the control
 socket, and is started by launchd at login. When something asks for a
 fingerprint it posts a macOS notification with the requester's reason, so you
 know what you are approving, unless the app has said `hello ui=1` on the
-socket and shows the request itself (ADR-0014). See ADR-0003 for why this is a
+socket and shows the request itself in its panel (ADR-0014, ADR-0016). See ADR-0003 for why this is a
 daemon and not the app.
 
 ### MacTouch.app (`app/Sources/MacTouchApp` and `MacTouchModel`, SwiftUI menu bar)
@@ -134,8 +134,9 @@ renders it: status and ring lines, the idle colour submenu, monitor toggles,
 and a clear for the notify layer. The Settings window has a Fingers pane
 (enrol into the first free slot with the daemon's live steps, name slots in
 the app's defaults, delete with confirmation) and a Diagnostics pane that
-shows the `HealthReport` rows doctor prints. Real notifications for requests
-and the login item follow. Built by
+shows the `HealthReport` rows doctor prints. A fingerprint request puts up a
+floating non-activating panel with the reason and a Cancel button, gone when
+the request ends. The login item follows. Built by
 `scripts/bundle-app.sh` with the command line tools, no Xcode project
 (ADR-0015); see [APP.md](APP.md) for the plan.
 

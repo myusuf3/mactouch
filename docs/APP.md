@@ -18,13 +18,14 @@ Three surfaces:
    menu bar extra, so this is a plain menu, not a window.
 2. **A Settings window.** Fingers, monitors, ring colour, login item,
    diagnostics. Opened from the menu and with the standard shortcut.
-3. **Notifications.** When something asks for a fingerprint, a real
-   `UserNotifications` notification with the reason and a Cancel button,
-   replacing the daemon's `osascript` fallback.
+3. **The request panel.** When something asks for a fingerprint, a floating
+   panel in the centre of the screen with the reason and a Cancel button,
+   modelled on the system Touch ID prompt, replacing the daemon's `osascript`
+   fallback. It was going to be a notification; ADR-0016 says why it is not.
 
 Non-goals, so they do not creep in: no approve button anywhere (the finger is
-the approval, ADR-0006), no on-screen HUD, no second copy of the CLI. Anything
-the app can do, the CLI can do; the app is a view.
+the approval, ADR-0006), no second copy of the CLI. Anything the app can do,
+the CLI can do; the app is a view.
 
 ## The menu
 
@@ -71,13 +72,17 @@ A `Settings` scene with a `TabView`:
 Doctor's checks move from the CLI into MacTouchKit as a `HealthReport` so the
 CLI and the app render one list.
 
-## Notifications
+## Request panel
 
-Only a bundled app with a bundle identifier can use `UNUserNotificationCenter`,
-which is why the daemon posts through `osascript` today. The app registers a
-category with one action, Cancel, that sends `cancel` on the socket. The
-notification body is the requester's reason; the title says whether it is an
-ordinary request or a sudo request, matching the blue and white ring colours.
+A borderless non-activating `NSPanel` at `.floating` level, on every Space,
+centred on the screen with the pointer. It never becomes key, so a password
+being typed into the terminal that asked keeps going there. It shows the
+requester's reason, a title that says whether it is an ordinary request or a
+signed one such as sudo, "try again" after a failed attempt, and a Cancel
+button that sends `cancel` on the socket. It appears on `evt request
+state=pending` and disappears on `state=done`, however the request ended:
+match, timeout or Cancel. A Focus mode cannot hide it, which is why it is a
+panel and not a notification (ADR-0016).
 
 Handoff from the daemon needs one protocol addition: the daemon emits
 `evt request state=pending|done kind=plain|nonce reason=<text>` on the events
@@ -163,9 +168,9 @@ Each step ships on its own and is verified against the running daemon.
 4. **Settings: Fingers and Diagnostics.** Enrol with live steps, delete,
    names, health rows, self-test button. Verify: enrol a finger from the app,
    see it in `mactouch slots`, delete it.
-5. **Notifications.** Category, Cancel action, daemon handoff. Verify: run
-   `mactouch identify --reason test`, see the notification, press Cancel,
-   see exit code 2.
+5. **Request panel.** Panel, Cancel, daemon handoff. Verify: run
+   `mactouch identify --reason test`, see the panel, press Cancel, see exit
+   code 2.
 6. **Login item and General pane.** `SMAppService.mainApp`, show-in-menu-bar.
    Verify: the app appears under Login Items; log out and in.
 7. **Bundle the daemon.** Move the agent into the bundle, `bundle-app.sh`
