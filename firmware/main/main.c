@@ -5,6 +5,7 @@
 #include "ccid.h"
 #include "led.h"
 #include "link.h"
+#include "piv.h"
 #include "settings.h"
 #include "touch.h"
 #include "usb.h"
@@ -21,6 +22,7 @@ void app_main(void) {
   settings_init();
   zw101_init();
   led_init();
+  piv_init();
   ccid_init();
   usb_init();
   link_init();
