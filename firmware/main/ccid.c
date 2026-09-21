@@ -125,6 +125,7 @@ static void handle(const ccid_message_t *msg) {
       break;
     case PC_TO_RDR_ICC_POWER_OFF:
       powered = false;
+      piv_session_reset();
       reply_slot_status(msg->seq, ICC_PRESENT_INACTIVE | CMD_OK, 0);
       break;
     case PC_TO_RDR_GET_SLOT_STATUS:
@@ -174,6 +175,7 @@ static void driver_reset(uint8_t rhport) {
   powered = false;
   inbound_len = 0;
   zlp_pending = false;
+  piv_session_reset();
 }
 
 static void arm_out(void) {

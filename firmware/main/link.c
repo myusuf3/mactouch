@@ -22,8 +22,10 @@
 #include "tusb.h"
 
 #include "led.h"
+#include "piv.h"
 #include "settings.h"
 #include "touch.h"
+#include "usb.h"
 #include "vectors.h"
 #include "zw101.h"
 
@@ -31,7 +33,7 @@
 #define IDENTIFY_DEFAULT_MS 15000
 #define IDENTIFY_MAX_MS 120000
 
-typedef enum { JOB_IDENTIFY, JOB_ENROLL, JOB_PAIR } job_kind_t;
+typedef enum { JOB_IDENTIFY, JOB_ENROLL, JOB_PAIR, JOB_PIV_GENKEY, JOB_PIV_RESET } job_kind_t;
 typedef struct {
   job_kind_t kind;
   char args[LINK_LINE_MAX];
@@ -205,6 +207,57 @@ static bool capture(uint8_t buffer, uint32_t timeout_ms, const char **reason) {
   return false;
 }
 
+// Waits for an enrolled finger with the ring breathing white; the gate for
+// commands that change what the device is.
+static bool confirm_touch(uint32_t timeout_ms, const char **reason) {
+  led_set(LED_MODE_BREATHE, LED_WHITE, LED_WHITE, 0);
+  int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+  while (esp_timer_get_time() < deadline) {
+    if (cancel_requested) { *reason = "cancelled"; return false; }
+    uint16_t slot, score;
+    int result = zw101_match_now(&slot, &score);
+    if (result == 1) return true;
+    if (result == 0) {
+      link_send("EVT NOMATCH");
+      led_set(LED_MODE_ON, LED_RED, LED_RED, 0);
+      vTaskDelay(pdMS_TO_TICKS(350));
+      led_set(LED_MODE_BREATHE, LED_WHITE, LED_WHITE, 0);
+      wait_lift(2000);
+      continue;
+    }
+    if (result < 0 && !zw101_recover()) { *reason = "sensor"; return false; }
+    vTaskDelay(pdMS_TO_TICKS(60));
+  }
+  *reason = "timeout";
+  return false;
+}
+
+// PIV GENKEY makes the card's identity, PIV RESET destroys it and returns
+// the PIN to the default. Both need a finger, and both change what the Mac
+// sees, so the device re-enumerates once the reply has gone out.
+static void run_piv(bool reset) {
+  const char *reason;
+  if (!zw101_lock(1000)) { finish("ERR PIV reason=sensor"); return; }
+  bool touched = confirm_touch(30000, &reason);
+  zw101_unlock();
+  if (!touched) { led_idle(); finish("ERR PIV reason=%s", reason); return; }
+  if (reset) {
+    piv_reset_identity();
+    led_result(true);
+    finish("OK PIV identity=no");
+  } else if (piv_has_identity()) {
+    led_result(false);
+    finish("ERR PIV reason=exists");
+    return;
+  } else {
+    bool ok = piv_generate_identity();
+    led_result(ok);
+    if (!ok) { finish("ERR PIV reason=failed"); return; }
+    finish("OK PIV identity=yes");
+  }
+  usb_rescan(700);
+}
+
 static void run_identify(const char *args, bool pair) {
   const char *verb = pair ? "PAIR" : "IDENTIFY";
   char value[64];
@@ -334,6 +387,8 @@ static void worker_task(void *arg_) {
       case JOB_IDENTIFY: run_identify(job.args, false); break;
       case JOB_PAIR: run_identify(job.args, true); break;
       case JOB_ENROLL: run_enroll(job.args); break;
+      case JOB_PIV_GENKEY: run_piv(false); break;
+      case JOB_PIV_RESET: run_piv(true); break;
     }
     busy = false;
     if (final_reply[0]) link_send("%s", final_reply);
@@ -359,12 +414,12 @@ static void status(void) {
   int count = zw101_count();
   char ring[32];
   led_describe(ring, sizeof(ring));
-  link_send("OK STATUS fw=%s proto=%d sensor=%s prints=%d touch=%s finger=%d watch=%s idle=%s ring=%s",
+  link_send("OK STATUS fw=%s proto=%d sensor=%s prints=%d touch=%s finger=%d watch=%s idle=%s ring=%s piv=%s",
             MACTOUCH_FW_VERSION, MACTOUCH_PROTOCOL_VERSION,
             count >= 0 ? "ready" : "offline", count,
             settings_touch_source() == TOUCH_SOURCE_PIN ? "pin" : "poll",
             touch_present() ? 1 : 0, touch_watch() ? "on" : "off",
-            led_colour_name(led_idle_colour()), ring);
+            led_colour_name(led_idle_colour()), ring, piv_has_identity() ? "identity" : "none");
 }
 
 static void led_command(const char *args) {
@@ -486,6 +541,17 @@ static void handle(char *line) {
     submit(JOB_ENROLL, "ENROLL", args);
   } else if (strcmp(line, "PAIR") == 0) {
     submit(JOB_PAIR, "PAIR", args);
+  } else if (strcmp(line, "PIV") == 0) {
+    if (strcmp(args, "STATUS") == 0) {
+      link_send("OK PIV identity=%s pin=%s retries=%u", piv_has_identity() ? "yes" : "no",
+                piv_pin_is_default() ? "default" : "set", piv_pin_retries());
+    } else if (strcmp(args, "GENKEY") == 0) {
+      submit(JOB_PIV_GENKEY, "PIV", args);
+    } else if (strcmp(args, "RESET") == 0) {
+      submit(JOB_PIV_RESET, "PIV", args);
+    } else {
+      link_send("ERR PIV reason=unknown");
+    }
   } else if (strcmp(line, "CANCEL") == 0) {
     cancel_requested = true;
     link_send("OK CANCEL");
