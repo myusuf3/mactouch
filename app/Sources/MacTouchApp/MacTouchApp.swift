@@ -9,7 +9,7 @@ import SwiftUI
 struct MacTouchApp: App {
   @StateObject private var model: DaemonModel
   @StateObject private var agent: DaemonAgent
-  @StateObject private var loginItem = LoginItem()
+  @StateObject private var loginItem: LoginItem
   @NSApplicationDelegateAdaptor private var delegate: AppDelegate
   /// The HIG leaves it to people whether an extra sits in their menu bar.
   /// The app keeps running hidden; opening it again brings the icon back.
@@ -21,8 +21,11 @@ struct MacTouchApp: App {
     _model = StateObject(wrappedValue: model)
     let agent = DaemonAgent()
     _agent = StateObject(wrappedValue: agent)
+    let loginItem = LoginItem()
+    _loginItem = StateObject(wrappedValue: loginItem)
     requestPanel = RequestPanel(model: model)
     agent.install()
+    loginItem.registerOnFirstLaunch()
   }
 
   var body: some Scene {

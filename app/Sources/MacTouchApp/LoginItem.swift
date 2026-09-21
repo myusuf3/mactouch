@@ -9,6 +9,16 @@ final class LoginItem: ObservableObject {
 
   var isEnabled: Bool { status == .enabled || status == .requiresApproval }
 
+  /// Once, the first time the app runs. A menu bar app that shows sudo
+  /// requests is only useful when it is there, so it starts at login until
+  /// turned off in Settings; after that the user's choice stands.
+  func registerOnFirstLaunch(defaults: UserDefaults = .standard) {
+    let key = "registeredLoginItemOnFirstLaunch"
+    guard !defaults.bool(forKey: key) else { return }
+    set(enabled: true)
+    defaults.set(true, forKey: key)
+  }
+
   func set(enabled: Bool) {
     do {
       if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
