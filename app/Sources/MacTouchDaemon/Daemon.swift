@@ -56,6 +56,11 @@ final class Daemon {
       self?.server.broadcast(line)
       self?.queue.async {
         if let connection = self?.busyConnection, !connection.subscribed { connection.send(line) }
+        // A smart card request drives the ring from the device; take it back.
+        if name == "PIV", fields["state"] == "done" {
+          self?.applied = nil
+          self?.applyRing()
+        }
       }
     }
     manager.start()
