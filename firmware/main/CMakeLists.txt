@@ -7,6 +7,8 @@ idf_component_register(
     "link.c"
     "usb.c"
     "usb_descriptors.c"
+    "ccid.c"
+    "piv.c"
     "settings.c"
   INCLUDE_DIRS "."
   REQUIRES app_update esp_tinyusb esp_timer nvs_flash mbedtls

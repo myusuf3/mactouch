@@ -2,6 +2,7 @@
 #include "esp_ota_ops.h"
 #include "nvs_flash.h"
 
+#include "ccid.h"
 #include "led.h"
 #include "link.h"
 #include "settings.h"
@@ -20,6 +21,7 @@ void app_main(void) {
   settings_init();
   zw101_init();
   led_init();
+  ccid_init();
   usb_init();
   link_init();
   touch_init();
