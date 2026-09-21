@@ -103,6 +103,13 @@ the public key hash, not on a chain.
   `piv=on|off`. Events `EVT PIV state=pending|done` mirror `EVT REQUEST`, so
   the daemon and app can show the request panel for a PIV touch too.
 
+## Checking the card
+
+`scripts/apdu.py` talks to the card through PC/SC with no packages and no
+entitlement: `select`, `get <tag>` with chaining handled, a raw hex APDU, or
+one APDU per line on stdin. It is how every step below is checked before
+`sc_auth` is involved.
+
 ## Mac shape
 
 - `mactouch piv status|on|off|genkey|reset` pass through the daemon.
@@ -122,10 +129,13 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    appears in `system_profiler SPSmartCardsDataType`, `pcsctest` connects
    and prints the ATR, `mactouch status` still works over the serial link.
    This is the step that settles the driver question.
-2. **PIV data objects.** `SELECT`, `GET DATA` for CHUID and discovery, a
-   placeholder certificate, `GET RESPONSE` chaining, extended APDUs. Verify:
-   `security list-smartcards` shows the token and `sc_auth identities` is
-   silent or lists the placeholder.
+2. **PIV data objects.** `SELECT`, `GET DATA` for CHUID, discovery, card
+   capability container and key history, `GET RESPONSE` chaining, extended
+   APDUs, `6A88` for the certificates until there is a key. Verify with
+   `scripts/apdu.py`, and macOS's PIV token must claim the card:
+   `system_profiler SPSmartCardsDataType` lists `com.apple.pivtoken:<GUID>`
+   with the CHUID's GUID. Done 2026-09-21; the token appeared with no
+   certificate present.
 3. **Key, certificate and PIN.** `PIV GENKEY` makes the P-256 key and a
    self-signed certificate on the device, `VERIFY`, `CHANGE REFERENCE DATA`,
    `GENERAL AUTHENTICATE` signing. Verify: `sc_auth identities` lists the
