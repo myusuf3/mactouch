@@ -60,7 +60,10 @@ Settings footer says so.
 
 A `Settings` scene with a `TabView`:
 
-- **General.** Idle colour, launch at login, show in menu bar.
+- **General.** Idle colour, launch at login, show in menu bar. Launch at
+  login is turned on the first time the app runs, because an app whose job
+  is to be there when sudo asks is no use absent; the toggle is the opt-out
+  and the choice is not touched again.
 - **Fingers.** The slot table from `slots`, a name per slot stored in the
   app's defaults, enrol into the first free slot with the three-step progress
   the daemon already streams as `evt enroll step=...`, delete with
