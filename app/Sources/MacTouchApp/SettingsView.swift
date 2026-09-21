@@ -7,9 +7,12 @@ import SwiftUI
 /// activates the app or the window would land behind whatever is in front.
 struct SettingsView: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var loginItem: LoginItem
 
   var body: some View {
     TabView {
+      GeneralPane(model: model, loginItem: loginItem)
+        .tabItem { Label("General", systemImage: "gearshape") }
       FingersPane(model: model)
         .tabItem { Label("Fingers", systemImage: "touchid") }
       DiagnosticsPane(model: model)
@@ -17,6 +20,51 @@ struct SettingsView: View {
     }
     .frame(width: 480)
     .onAppear { NSApp.activate(ignoringOtherApps: true) }
+  }
+}
+
+struct GeneralPane: View {
+  @ObservedObject var model: DaemonModel
+  @ObservedObject var loginItem: LoginItem
+  @AppStorage(showInMenuBarKey) private var showInMenuBar = true
+
+  var body: some View {
+    Form {
+      Section {
+        Picker("Idle colour", selection: idleColour) {
+          ForEach(LEDColour.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+        }
+        .disabled(!model.deviceConnected)
+      } footer: {
+        Text("The ring's resting colour, kept on the device.")
+      }
+      Section {
+        Toggle("Launch at login", isOn: launchAtLogin)
+        if loginItem.status == .requiresApproval {
+          LabeledContent("Waiting for approval under Login Items") {
+            Button("Open Login Items…") { loginItem.openLoginItems() }
+          }
+        }
+        if let error = loginItem.lastError {
+          Text(error).foregroundStyle(.red)
+        }
+      }
+      Section {
+        Toggle("Show in menu bar", isOn: $showInMenuBar)
+      } footer: {
+        Text("MacTouch keeps running without the icon and still shows fingerprint requests. To bring the icon back, open MacTouch again.")
+      }
+    }
+    .formStyle(.grouped)
+    .onAppear { loginItem.refresh() }
+  }
+
+  private var idleColour: Binding<LEDColour> {
+    Binding(get: { model.idle ?? .off }, set: { model.setIdle($0) })
+  }
+
+  private var launchAtLogin: Binding<Bool> {
+    Binding(get: { loginItem.isEnabled }, set: { loginItem.set(enabled: $0) })
   }
 }
 

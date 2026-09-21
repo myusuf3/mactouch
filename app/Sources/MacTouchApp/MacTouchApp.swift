@@ -8,6 +8,11 @@ import SwiftUI
 @main
 struct MacTouchApp: App {
   @StateObject private var model: DaemonModel
+  @StateObject private var loginItem = LoginItem()
+  @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+  /// The HIG leaves it to people whether an extra sits in their menu bar.
+  /// The app keeps running hidden; opening it again brings the icon back.
+  @AppStorage(showInMenuBarKey) private var showInMenuBar = true
   private let requestPanel: RequestPanel
 
   init() {
@@ -17,12 +22,23 @@ struct MacTouchApp: App {
   }
 
   var body: some Scene {
-    MenuBarExtra("MacTouch", systemImage: "touchid") {
+    MenuBarExtra("MacTouch", systemImage: "touchid", isInserted: $showInMenuBar) {
       StatusMenu(model: model)
     }
     Settings {
-      SettingsView(model: model)
+      SettingsView(model: model, loginItem: loginItem)
     }
+  }
+}
+
+let showInMenuBarKey = "showInMenuBar"
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+  /// Opening the app while it already runs, from Finder or Spotlight, is the
+  /// way back once the menu bar icon has been hidden.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+    UserDefaults.standard.set(true, forKey: showInMenuBarKey)
+    return true
   }
 }
 
