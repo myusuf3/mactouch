@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "mbedtls/ecdh.h"
@@ -14,6 +15,11 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/x509_crt.h"
 #include "nvs.h"
+
+#include "ccid.h"
+#include "led.h"
+#include "link.h"
+#include "presence.h"
 
 static const char *TAG = "piv";
 
@@ -120,6 +126,15 @@ static bool pin_verified;
 static nvs_handle_t store;
 // Serialises the APDU task against the link's worker regenerating the identity.
 static SemaphoreHandle_t lock;
+
+// The finger gate. A match opens a short window for a few operations, so
+// one touch covers a login's signature and keychain unwrap, and so touch
+// then PIN works as well as PIN then touch.
+#define PRESENCE_WINDOW_US (10 * 1000 * 1000)
+#define PRESENCE_OPERATIONS 4
+#define PRESENCE_WAIT_MS 15000
+static int64_t presence_until;
+static uint8_t presence_operations;
 
 static int rng(void *ctx, unsigned char *out, size_t len) {
   (void)ctx;
@@ -515,12 +530,33 @@ static size_t authentication_reply(uint8_t *resp, size_t cap, const uint8_t *val
   return reply(resp, cap, out, n, 0);
 }
 
+// True once a finger has been seen for this operation: a match inside the
+// window, or a fresh one waited for now while the host is held off with
+// time extensions and the link is told what is happening.
+static bool finger_present(void) {
+  if (presence_operations && esp_timer_get_time() < presence_until) {
+    presence_operations--;
+    return true;
+  }
+  presence_operations = 0;
+  link_send("EVT PIV state=pending");
+  const char *reason;
+  bool matched = presence_confirm(PRESENCE_WAIT_MS, LED_WHITE, ccid_time_extension, &reason);
+  led_idle();
+  link_send("EVT PIV state=done result=%s", matched ? "match" : reason);
+  if (!matched) return false;
+  presence_until = esp_timer_get_time() + PRESENCE_WINDOW_US;
+  presence_operations = PRESENCE_OPERATIONS - 1;
+  return true;
+}
+
 static size_t general_authenticate(uint8_t *resp, size_t cap, const apdu_t *apdu) {
   if (apdu->p1 != 0x11) return status(resp, cap, SW_INCORRECT_P1P2);  // only ECC P-256
   slot_t *slot = apdu->p2 == 0x9A ? &auth_slot : apdu->p2 == 0x9D ? &key_mgmt_slot : NULL;
   if (!slot) return status(resp, cap, SW_INCORRECT_P1P2);
   if (!identity_loaded) return status(resp, cap, SW_CONDITIONS_NOT_SATISFIED);
   if (!pin_verified) return status(resp, cap, SW_SECURITY_STATUS);
+  if (!finger_present()) return status(resp, cap, SW_SECURITY_STATUS);
 
   const uint8_t *value;
   size_t value_len;

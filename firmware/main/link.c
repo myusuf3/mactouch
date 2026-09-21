@@ -23,6 +23,7 @@
 
 #include "led.h"
 #include "piv.h"
+#include "presence.h"
 #include "settings.h"
 #include "touch.h"
 #include "usb.h"
@@ -207,40 +208,16 @@ static bool capture(uint8_t buffer, uint32_t timeout_ms, const char **reason) {
   return false;
 }
 
-// Waits for an enrolled finger with the ring breathing white; the gate for
-// commands that change what the device is.
-static bool confirm_touch(uint32_t timeout_ms, const char **reason) {
-  led_set(LED_MODE_BREATHE, LED_WHITE, LED_WHITE, 0);
-  int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
-  while (esp_timer_get_time() < deadline) {
-    if (cancel_requested) { *reason = "cancelled"; return false; }
-    uint16_t slot, score;
-    int result = zw101_match_now(&slot, &score);
-    if (result == 1) return true;
-    if (result == 0) {
-      link_send("EVT NOMATCH");
-      led_set(LED_MODE_ON, LED_RED, LED_RED, 0);
-      vTaskDelay(pdMS_TO_TICKS(350));
-      led_set(LED_MODE_BREATHE, LED_WHITE, LED_WHITE, 0);
-      wait_lift(2000);
-      continue;
-    }
-    if (result < 0 && !zw101_recover()) { *reason = "sensor"; return false; }
-    vTaskDelay(pdMS_TO_TICKS(60));
-  }
-  *reason = "timeout";
-  return false;
-}
-
 // PIV GENKEY makes the card's identity, PIV RESET destroys it and returns
 // the PIN to the default. Both need a finger, and both change what the Mac
 // sees, so the device re-enumerates once the reply has gone out.
 static void run_piv(bool reset) {
   const char *reason;
-  if (!zw101_lock(1000)) { finish("ERR PIV reason=sensor"); return; }
-  bool touched = confirm_touch(30000, &reason);
-  zw101_unlock();
-  if (!touched) { led_idle(); finish("ERR PIV reason=%s", reason); return; }
+  if (!presence_confirm(30000, LED_WHITE, NULL, &reason)) {
+    led_idle();
+    finish("ERR PIV reason=%s", reason);
+    return;
+  }
   if (reset) {
     piv_reset_identity();
     led_result(true);

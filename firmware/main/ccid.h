@@ -8,3 +8,5 @@
 // answers APDUs off the USB task.
 void ccid_init(void);
 bool ccid_mounted(void);
+// For the card, while it works on the APDU in flight.
+void ccid_time_extension(void);

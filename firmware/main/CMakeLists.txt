@@ -9,6 +9,7 @@ idf_component_register(
     "usb_descriptors.c"
     "ccid.c"
     "piv.c"
+    "presence.c"
     "settings.c"
   INCLUDE_DIRS "."
   REQUIRES app_update esp_tinyusb esp_timer nvs_flash mbedtls

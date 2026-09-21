@@ -74,6 +74,7 @@ static CFG_TUSB_MEM_SECTION CFG_TUSB_MEM_ALIGN ccid_message_t outbound;
 static uint32_t inbound_len;
 static bool zlp_pending;
 static QueueHandle_t requests;
+static uint8_t current_seq;
 
 // MARK: responses, sent from the CCID task
 
@@ -91,6 +92,16 @@ static void reply_slot_status(uint8_t seq, uint8_t status, uint8_t error) {
   ccid_message_t reply = {.type = RDR_TO_PC_SLOT_STATUS, .length = 0, .slot = 0, .seq = seq};
   reply.param[0] = status;
   reply.param[1] = error;
+  reply.param[2] = 0;
+  send(&reply);
+}
+
+// Tells the host the card is still working, so it resets its timeout. Sent
+// while the card waits for a finger; bError carries the multiplier.
+void ccid_time_extension(void) {
+  ccid_message_t reply = {.type = RDR_TO_PC_DATA_BLOCK, .length = 0, .slot = 0, .seq = current_seq};
+  reply.param[0] = ICC_PRESENT_ACTIVE | CMD_TIME_EXTENSION;
+  reply.param[1] = 1;
   reply.param[2] = 0;
   send(&reply);
 }
@@ -137,6 +148,7 @@ static void handle(const ccid_message_t *msg) {
         break;
       }
       static uint8_t response[CCID_MAX_MESSAGE - CCID_HEADER];
+      current_seq = msg->seq;
       size_t n = piv_apdu(msg->data, msg->length, response, sizeof(response));
       reply_data_block(msg->seq, response, (uint32_t)n);
       break;
