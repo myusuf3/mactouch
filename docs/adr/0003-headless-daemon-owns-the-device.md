@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Later decisions revise parts of it: the app builds without Xcode after all (ADR-0015), the `osascript` notification is replaced by the app's request panel while the app runs (ADR-0014, ADR-0016), and the daemon is installed by the app rather than by `install.sh` (ADR-0017). The core decision, a headless daemon owns the device and the UI is a client, stands.
 
 ## Context
 
