@@ -118,7 +118,9 @@ The device key is 32 random bytes generated on first boot and stored in NVS.
 ### mactouchd (`app/Sources/MacTouchDaemon`, headless)
 
 Owns the device. Runs the monitors and the policy stack, serves the control
-socket, and is started by launchd at login. When something asks for a
+socket, and is started by launchd at login: from the agent plist inside
+MacTouch.app that the app registers, or from the one `scripts/install.sh`
+writes for a checkout without the app. When something asks for a
 fingerprint it posts a macOS notification with the requester's reason, so you
 know what you are approving, unless the app has said `hello ui=1` on the
 socket and shows the request itself in its panel (ADR-0014, ADR-0016). See ADR-0003 for why this is a
@@ -138,7 +140,10 @@ bar with reopen-to-restore), a Fingers pane
 the app's defaults, delete with confirmation) and a Diagnostics pane that
 shows the `HealthReport` rows doctor prints. A fingerprint request puts up a
 floating non-activating panel with the reason and a Cancel button, gone when
-the request ends. Bundling the daemon into the app follows. Built by
+the request ends. The bundle carries `mactouchd` and the CLI; the app
+registers the daemon's launch agent on every launch and retires the one
+`install.sh` wrote, so installing is `scripts/bundle-app.sh` and
+uninstalling is deleting the app. Built by
 `scripts/bundle-app.sh` with the command line tools, no Xcode project
 (ADR-0015); see [APP.md](APP.md) for the plan.
 

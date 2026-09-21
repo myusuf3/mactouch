@@ -5,9 +5,11 @@
   agent install, shared protocol vectors with a firmware self-test, `doctor`,
   and the PAM module with its install script. All verified on hardware,
   including a passwordless `su` on a touch.
-- **In progress:** the menu bar app, planned in [APP.md](APP.md). The daemon
-  groundwork and the app skeleton are in; the menu shows daemon, device and
-  ring state. Menu actions, Settings, notifications and login item follow.
+- **Done, app:** the menu bar app in [APP.md](APP.md), all seven steps: menu
+  with state and actions, Settings with General, Fingers and Diagnostics, the
+  fingerprint request panel (ADR-0016), launch at login, and the bundle that
+  carries the daemon and the CLI so install is one script and uninstall is
+  deleting the app.
 - **Later:** AI-agent hooks that demand a fingerprint before destructive shell
   commands, tap and hold gestures mapped to Shortcuts, per-finger actions, Calendar countdowns, an SSH agent
   with touch-to-sign, and PIV smart card emulation for unlocking the screen

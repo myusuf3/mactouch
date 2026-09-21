@@ -69,7 +69,10 @@ none appear during an identify or enrolment.
 
 ### Menu bar app
 
-`scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. Its menu
+`scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. The app
+carries the daemon and the CLI, starts the daemon at login, and puts
+`mactouch` on your PATH through `~/.local/bin`; uninstalling is deleting the
+app and, if you set it up, `sudo scripts/pam-uninstall.sh`. Its menu
 shows the daemon, device and ring state, sets the idle colour, toggles the
 monitors and clears the notify layer. Settings (⌘,) has General for the
 idle colour, launch at login and hiding the icon (open MacTouch again to

@@ -133,35 +133,48 @@ swift build
 outside the toolchain's search path; the script passes the framework paths
 that `swift test` needs.
 
-To run the daemon at login and put the CLI on your PATH:
+### Install: the app carries the daemon
+
+```
+scripts/bundle-app.sh
+```
+
+There is no Xcode project (ADR-0015). The script builds everything in
+release and lays out `MacTouch.app`: the app in `Contents/MacOS/MacTouch`,
+`mactouchd` beside it, the `mactouch` CLI in `Contents/Helpers` (on a
+case-insensitive volume `MacOS/mactouch` would be the app itself), and the
+daemon's launch agent plist in `Contents/Library/LaunchAgents`. It signs the
+helpers and the bundle, installs to `~/Applications`, symlinks the CLI into
+`~/.local/bin`, and opens the app. On launch the app registers the agent
+through `SMAppService`, which starts the daemon and lists MacTouch under
+Login Items in System Settings; if a plist from `install.sh` is still there
+the app unloads and removes it first. The daemon restarts if it crashes,
+reconnects when the board is replugged, and logs to
+`~/Library/Logs/mactouch/mactouchd.log`.
+
+Re-run the script after changing anything. It quits the app, unloads the
+agent so the new plist and binaries register afresh, and opens the app
+again. `scripts/daemon.sh start|stop|restart|status` controls the agent
+either way.
+
+Signing uses an "Apple Development" identity from your keychain when there
+is one, or the identity named in `MACTOUCH_SIGN_IDENTITY`, and falls back to
+ad hoc. The helpers must carry the same signature as the app: launchd
+refuses to spawn an `SMAppService` agent signed differently from the app
+that registered it. Another Mac needs a Developer ID.
+
+Full Disk Access is granted per binary. If you had granted it to
+`~/.local/bin/mactouchd` for the Focus monitor, grant it again to the daemon
+inside the app; `mactouch doctor` says when it is missing.
+
+### Developer path without the app
 
 ```
 scripts/install.sh
 ```
 
-This builds release binaries into `~/.local/bin`, writes a launch agent named
-`dev.mactouch.daemon` to `~/Library/LaunchAgents`, and starts it. The daemon
-restarts automatically if it crashes and reconnects when the board is
-replugged. Logs go to `~/Library/Logs/mactouch/mactouchd.log`. Re-run the
-script after changing the daemon. `scripts/daemon.sh start|stop|restart|status`
-controls the agent.
-
-## Build the menu bar app
-
-```
-scripts/bundle-app.sh
-open ~/Applications/MacTouch.app
-```
-
-There is no Xcode project (ADR-0015). The script builds the `MacTouchApp`
-product in release, lays out `MacTouch.app` around the binary with an
-`Info.plist` that hides the Dock icon, signs it and copies it to
-`~/Applications`, quitting a running copy first. The app is a client of the
-daemon's socket, so it needs `mactouchd` running to show anything beyond
-"Daemon not running".
-
-Signing uses an "Apple Development" identity from your keychain when there
-is one, or the identity named in `MACTOUCH_SIGN_IDENTITY`, and falls back to
-ad hoc, which is enough on the Mac that built it. Another Mac needs a
-Developer ID.
+For a checkout where the app is not wanted: builds release binaries into
+`~/.local/bin`, writes the launch agent to `~/Library/LaunchAgents` and
+starts it. It refuses to run while `MacTouch.app` is installed, because the
+app owns the agent then.
 

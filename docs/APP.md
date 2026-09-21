@@ -116,12 +116,19 @@ Mac needs a Developer ID, which is out of scope until there is a release.
 ## Packaging: the app ships the daemon
 
 The app bundles the daemon and the CLI without changing the process
-boundary. `MacTouch.app` carries three executables, `MacTouch`, `mactouchd`
-and `mactouch`, plus `Contents/Library/LaunchAgents/dev.mactouch.daemon.plist`
-whose `BundleProgram` points at the daemon inside the bundle. On first launch
-the app calls `SMAppService.agent(plistName:)` and `register()`, and macOS
-lists MacTouch under Login Items for one-time approval. The CLI gets a
-symlink into `~/.local/bin`.
+boundary. `MacTouch.app` carries three executables, `MacTouch` and
+`mactouchd` in `Contents/MacOS` and `mactouch` in `Contents/Helpers` (on a
+case-insensitive volume `MacOS/mactouch` would be the app), plus
+`Contents/Library/LaunchAgents/dev.mactouch.daemon.plist` whose
+`BundleProgram` points at the daemon inside the bundle. On every launch the
+app calls `SMAppService.agent(plistName:)` and `register()`, and macOS lists
+MacTouch under Login Items. The CLI gets a symlink into `~/.local/bin`.
+
+Two things launchd insists on, found the hard way: the helpers must be
+signed with the same identity as the app, or every spawn dies with
+`OS_REASON_CODESIGNING`, and `register()` keeps the registration it already
+has, so a changed plist or binary needs the agent unloaded first, which
+`bundle-app.sh` does before reopening the app.
 
 One artifact, one signature over all three binaries, uninstall by deleting
 the app. The socket path, the protocol, the PAM module and the CLI address
