@@ -7,7 +7,14 @@ import SwiftUI
 /// a template image so the system colours it for light and dark menu bars.
 @main
 struct MacTouchApp: App {
-  @StateObject private var model = DaemonModel()
+  @StateObject private var model: DaemonModel
+  private let requestPanel: RequestPanel
+
+  init() {
+    let model = DaemonModel()
+    _model = StateObject(wrappedValue: model)
+    requestPanel = RequestPanel(model: model)
+  }
 
   var body: some Scene {
     MenuBarExtra("MacTouch", systemImage: "touchid") {
