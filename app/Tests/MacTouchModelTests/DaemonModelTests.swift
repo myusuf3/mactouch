@@ -4,11 +4,15 @@ import Testing
 import MacTouchModel
 
 /// Requests a fake daemon received, safe to append from the socket queue.
+/// The automatic `hello ui=1` is counted apart so tests can compare the rest.
 private final class Received: @unchecked Sendable {
   private let lock = NSLock()
   private var lines: [String] = []
+  private var helloCount = 0
   func append(_ line: String) { lock.lock(); lines.append(line); lock.unlock() }
+  func hello() { lock.lock(); helloCount += 1; lock.unlock() }
   var all: [String] { lock.lock(); defer { lock.unlock() }; return lines }
+  var hellos: Int { lock.lock(); defer { lock.unlock() }; return helloCount }
 }
 
 @MainActor
@@ -22,8 +26,8 @@ private func waitUntil(_ condition: @escaping () -> Bool) async throws {
 
 /// A daemon with a connected device, two fingers and a notify layer, that
 /// records every other request and answers `ok`.
-private func fakeDaemon(recording received: Received) throws -> ControlServer {
-  let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-model-\(UUID().uuidString.prefix(8)).sock")
+private func fakeDaemon(recording received: Received, at path: String? = nil) throws -> ControlServer {
+  let server = ControlServer(path: path ?? NSTemporaryDirectory() + "mactouch-model-\(UUID().uuidString.prefix(8)).sock")
   server.handler = { request, connection in
     switch request.verb {
     case "events":
@@ -44,6 +48,9 @@ private func fakeDaemon(recording received: Received) throws -> ControlServer {
       connection.send(ControlLine.ok("enroll", [("slot", request["slot"] ?? "?")]))
     case "selftest":
       connection.send(ControlLine.ok("selftest"))
+    case "hello":
+      received.hello()
+      connection.send(ControlLine.ok("hello", [("proto", "1")]))
     default:
       received.append(request.line)
       connection.send(ControlLine.ok(request.verb))
@@ -104,6 +111,33 @@ private func fakeDaemon(recording received: Received) throws -> ControlServer {
     try await waitUntil { received.all.count == 2 }
     #expect(received.all.last == "delete slot=1")
     #expect(model.names[1] == nil)
+  }
+
+  @Test @MainActor func announcesItselfFollowsRequestsAndCancels() async throws {
+    let received = Received()
+    var server = try fakeDaemon(recording: received)
+    let model = DaemonModel(path: server.path)
+    try await waitUntil { received.hellos == 1 }
+    try await waitUntil { model.daemonRunning }
+
+    server.broadcast(ControlLine.evt("request", [("state", "pending"), ("kind", "nonce"), ("reason", "deploy to prod")]))
+    try await waitUntil { model.request != nil }
+    #expect(model.request == DaemonModel.Request(kind: "nonce", reason: "deploy to prod"))
+    server.broadcast(ControlLine.evt("nomatch"))
+    try await waitUntil { model.noMatches == 1 }
+    model.cancel()
+    try await waitUntil { received.all.last == "cancel" }
+    server.broadcast(ControlLine.evt("request", [("state", "done"), ("kind", "nonce")]))
+    try await waitUntil { model.request == nil }
+    #expect(model.noMatches == 0)
+
+    // A daemon restart must hear hello again without being asked.
+    let path = server.path
+    server.stop()
+    try await waitUntil { !model.daemonRunning }
+    server = try fakeDaemon(recording: received, at: path)
+    defer { server.stop() }
+    try await waitUntil { received.hellos == 2 }
   }
 
   @Test @MainActor func reportsHealthFromTheDaemon() async throws {

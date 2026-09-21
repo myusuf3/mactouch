@@ -2,8 +2,8 @@ import Foundation
 import MacTouchKit
 
 /// What the app shows, fed by mactouchd's event stream. One connection stays
-/// subscribed to `events` for the life of the app and reconnects when it
-/// drops; requests run one at a time on `requests`, each on a short-lived
+/// subscribed to `events` for the life of the app, announces the app as the
+/// UI that shows requests, and reconnects when it drops; requests run one at a time on `requests`, each on a short-lived
 /// connection, so the stream never waits on the device and the main queue
 /// never waits on the socket. Published properties change on the main queue.
 public final class DaemonModel: ObservableObject {
@@ -14,6 +14,15 @@ public final class DaemonModel: ObservableObject {
     case running(step: String?)
     case done(slot: Int)
     case failed(String)
+  }
+
+  /// A fingerprint request in flight on the daemon.
+  public struct Request: Equatable {
+    /// `plain` for an ordinary identify, `nonce` for one carrying a nonce,
+    /// which is how PAM asks; the ring is blue or white to match.
+    public let kind: String
+    public let reason: String
+    public init(kind: String, reason: String) { self.kind = kind; self.reason = reason }
   }
 
   @Published public private(set) var daemonRunning = false
@@ -34,6 +43,9 @@ public final class DaemonModel: ObservableObject {
   /// device knows only slot numbers.
   @Published public private(set) var names: [Int: String]
   @Published public private(set) var health: HealthReport?
+  @Published public private(set) var request: Request?
+  /// Failed attempts during the current request, so the panel can say so.
+  @Published public private(set) var noMatches = 0
 
   public var notifyActive: Bool { layers.contains("notify") }
   public var firstFreeSlot: Int? { (1...capacity).first { !slots.contains($0) } }
@@ -133,6 +145,12 @@ public final class DaemonModel: ObservableObject {
     }
   }
 
+  // MARK: requests
+
+  public func cancel() {
+    send(ControlRequest(verb: "cancel"))
+  }
+
   // MARK: daemon
 
   /// Loads the launch agent install.sh wrote; the event stream picks the
@@ -166,6 +184,9 @@ public final class DaemonModel: ObservableObject {
         let client = try ControlClient(path: path)
         defer { client.close() }
         try client.send("events")
+        // This app shows requests itself, so the daemon's popup stays quiet
+        // while this connection lives. Said again on every reconnect.
+        try client.send("hello ui=1")
         refreshStatus()
         while true {
           guard let line = try client.readLine(timeout: 60) else { continue }
@@ -186,6 +207,15 @@ public final class DaemonModel: ObservableObject {
     case "ring":
       publish { $0.ring = fields["state"] }
       refreshStatus()
+    case "request":
+      let pending = fields["state"] == "pending"
+      let request = pending ? Request(kind: fields["kind"] ?? "plain", reason: fields["reason"] ?? "") : nil
+      publish { model in
+        model.request = request
+        model.noMatches = 0
+      }
+    case "nomatch":
+      publish { $0.noMatches += 1 }
     default:
       break
     }
