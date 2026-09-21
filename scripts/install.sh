@@ -1,5 +1,7 @@
 #!/bin/zsh
-# Install mactouchd as a launch agent and put the mactouch CLI on PATH.
+# Install mactouchd as a launch agent and put the mactouch CLI on PATH,
+# without the app. This is the developer path for a checkout; with the app,
+# scripts/bundle-app.sh installs everything and the app owns the agent.
 #
 # Builds release binaries, copies them to ~/.local/bin, writes the launchd
 # plist to ~/Library/LaunchAgents and loads it. Re-run after changing the
@@ -8,6 +10,10 @@ set -euo pipefail
 
 here="${0:A:h}"
 label="dev.mactouch.daemon"
+if [[ -d "$HOME/Applications/MacTouch.app" ]]; then
+  print -u2 "MacTouch.app is installed and manages the daemon; run scripts/bundle-app.sh instead."
+  exit 1
+fi
 bin="$HOME/.local/bin"
 plist="$HOME/Library/LaunchAgents/$label.plist"
 logs="$HOME/Library/Logs/mactouch"

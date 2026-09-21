@@ -47,7 +47,7 @@ print
 print "Done. The board has been reset into the new firmware."
 if $daemon_was_loaded; then
   sleep 2
-  launchctl bootstrap "gui/$UID" "$HOME/Library/LaunchAgents/$label.plist"
+  "${0:A:h}/daemon.sh" start
   print "mactouchd restarted."
 fi
 if $backup_wanted; then
