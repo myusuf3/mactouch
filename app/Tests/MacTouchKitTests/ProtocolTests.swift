@@ -9,6 +9,8 @@ import Testing
     #expect(Command.led(.flash, .red, .blue, cycles: 3).line == "LED flash red blue 3")
     #expect(Command.led(.off, .red).line == "LED off")
     #expect(Command.identify(timeoutMs: 15000).line == "IDENTIFY timeout=15000")
+    #expect(Command.piv("GENKEY").line == "PIV GENKEY")
+    #expect(Command.piv("STATUS").verb == "PIV")
     #expect(Command.identify(timeoutMs: 20000, prompt: .white, nonce: "00ff").line
             == "IDENTIFY timeout=20000 prompt=white nonce=00ff")
     #expect(Command.enroll(slot: 3).line == "ENROLL slot=3")

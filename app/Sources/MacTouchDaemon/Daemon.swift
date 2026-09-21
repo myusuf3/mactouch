@@ -133,7 +133,7 @@ final class Daemon {
       ]
       if let source = monitors.focusSource { fields.append(("focus", source.rawValue)) }
       if busy == nil, let device = manager.device, let status = try? device.request(.status) {
-        for key in ["fw", "sensor", "prints", "touch", "watch", "idle"] {
+        for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv"] {
           if let value = status[key] { fields.append((key, value)) }
         }
       }
@@ -204,6 +204,14 @@ final class Daemon {
       runLong(verb, connection, timeout: seconds + 3) { device in
         postNotification(title: "mactouch", body: "Touch to release the device key")
         return try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
+      }
+
+    case "piv":
+      guard let sub = request.positional.first?.uppercased(), ["STATUS", "GENKEY", "RESET"].contains(sub) else { return fail("value") }
+      if sub == "STATUS" {
+        passthrough(.piv(sub), verb, connection)
+      } else {
+        runLong(verb, connection, timeout: 40) { device in try device.request(.piv(sub), timeout: 40) }
       }
 
     case "delete":

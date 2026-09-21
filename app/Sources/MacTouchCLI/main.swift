@@ -26,6 +26,7 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   touch pin|poll                  how the device detects a finger
   monitor <lock|focus|mic|camera> on|off
   pair [--timeout SECONDS]        print the device key (once per boot, needs a touch)
+  piv status|genkey|reset         the smart card identity; genkey and reset need a touch
   gpio                            pin levels, for checking wiring
   selftest                        firmware signs the shared protocol vector
   events                          stream events until interrupted
@@ -104,6 +105,11 @@ func runViaDaemon(_ command: [String]) throws -> Int32 {
     request.positional = args
   case "idle", "watch", "touch", "monitor":
     request.positional = args
+  case "piv":
+    guard let sub = args.first else { throw fail("piv status|genkey|reset") }
+    request.positional = [sub]
+    timeout = 45
+    if sub != "status" { print("touch the sensor to confirm") }
   case "identify":
     let seconds = Double(option("--timeout", in: &args) ?? "15") ?? 15
     request.values["timeout"] = String(seconds)
@@ -211,6 +217,10 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
     print("touch the sensor to release the device key")
     printFields(try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3))
   case "gpio": printFields(try device.request(.gpio))
+  case "piv":
+    guard let sub = args.first, ["status", "genkey", "reset"].contains(sub) else { throw fail("piv status|genkey|reset") }
+    if sub != "status" { print("touch the sensor to confirm") }
+    printFields(try device.request(.piv(sub.uppercased()), timeout: 40))
   case "selftest": try device.request(.selftest)
   case "events":
     FileHandle.standardError.write(Data("streaming events from the device, ctrl-c to stop\n".utf8))

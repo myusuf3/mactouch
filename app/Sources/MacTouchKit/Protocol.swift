@@ -27,6 +27,8 @@ public enum Command: Equatable, Sendable {
   case watch(Bool)
   case touch(TouchSource)
   case pair(timeoutMs: Int = 30000)
+  /// `STATUS`, `GENKEY` or `RESET`; the last two wait for a finger.
+  case piv(String)
   case gpio
   case selftest
   case cancel
@@ -46,6 +48,7 @@ public enum Command: Equatable, Sendable {
     case .watch: return "WATCH"
     case .touch: return "TOUCH"
     case .pair: return "PAIR"
+    case .piv: return "PIV"
     case .gpio: return "GPIO"
     case .selftest: return "SELFTEST"
     case .cancel: return "CANCEL"
@@ -78,6 +81,7 @@ public enum Command: Equatable, Sendable {
     case .watch(let on): return "WATCH \(on ? "on" : "off")"
     case .touch(let source): return "TOUCH \(source.rawValue)"
     case .pair(let timeoutMs): return "PAIR timeout=\(timeoutMs)"
+    case .piv(let sub): return "PIV \(sub)"
     default: return verb
     }
   }
