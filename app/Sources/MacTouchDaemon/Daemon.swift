@@ -222,7 +222,12 @@ final class Daemon {
     case "touch":
       guard let source = request.positional.first.flatMap(TouchSource.init) else { return fail("value") }
       passthrough(.touch(source), verb, connection)
-    case "cancel": passthrough(.cancel, verb, connection)
+    case "cancel":
+      guard let device = manager.device else { return fail("device") }
+      do {
+        try device.cancel()
+        reply()
+      } catch { fail(describe(error)) }
     case "reboot": passthrough(.reboot, verb, connection)
 
     case "monitor":

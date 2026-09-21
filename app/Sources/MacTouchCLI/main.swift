@@ -215,7 +215,7 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
   case "events":
     FileHandle.standardError.write(Data("streaming events from the device, ctrl-c to stop\n".utf8))
     dispatchMain()
-  case "cancel": try device.request(.cancel)
+  case "cancel": try device.cancel()
   case "reboot": try device.request(.reboot)
   case "notify", "clear", "monitor":
     throw fail("\(command[0]) needs mactouchd running")

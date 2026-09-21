@@ -100,6 +100,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
+| `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled` |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |
 | `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent`, `evt ring state=<mode>:<colour>` and, around every identify, `evt request state=pending kind=plain\|nonce reason=<text>` then `evt request state=done kind=...` |

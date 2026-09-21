@@ -42,7 +42,19 @@ public final class Device {
       onEvent?(name, fields)
       return
     }
+    // `cancel()` never waits for this, and the command it interrupts is the
+    // one waiting, so the acknowledgement must not be handed to it.
+    if case .ok(let verb, _) = line, verb == "CANCEL" { return }
     resolve(line)
+  }
+
+  /// Interrupts the command in flight. CANCEL is the one command the device
+  /// answers while another is running, so it goes out without the request
+  /// lock and without waiting; the interrupted command then fails with
+  /// `reason=cancelled` and its caller learns the outcome that way.
+  public func cancel() throws {
+    onRawWrite?(Command.cancel.line)
+    try port.write(Command.cancel.line + "\n")
   }
 
   private func resolve(_ line: DeviceLine?) {
