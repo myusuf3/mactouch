@@ -71,10 +71,11 @@ card answers:
 - `GENERAL AUTHENTICATE` (`00 87 11 9A`) with the `7C` template: challenge in
   `81`, ECDSA signature back in `82`, algorithm `11` for P-256. For 9D the
   same command carries the host's public point in `85` and the card answers
-  the ECDH shared secret in `82`. ADR-0013 chose P-256 for both keys; if the
-  built-in token turns out to pair only with RSA key management, as tinyTouch
-  uses (RSA 2048 for both slots), 9D alone falls back to RSA and the ADR is
-  amended. Command chaining (`CLA 10`) is accepted for this command.
+  the ECDH shared secret in `82`. ADR-0013 chose P-256 for both keys and the
+  built-in token accepts that: it imports the ECC key management identity
+  with derive, decrypt and unwrap usage, so RSA, which tinyTouch uses for
+  both slots, is not needed anywhere. Command chaining is not implemented;
+  macOS has not sent it.
 - `GENERATE ASYMMETRIC KEY PAIR` and `PUT DATA` are not exposed to the host.
   Key and certificate come from the device link (`PIV GENKEY`), so nothing on
   the Mac can replace the key.
@@ -136,12 +137,18 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    `system_profiler SPSmartCardsDataType` lists `com.apple.pivtoken:<GUID>`
    with the CHUID's GUID. Done 2026-09-21; the token appeared with no
    certificate present.
-3. **Key, certificate and PIN.** `PIV GENKEY` makes the P-256 key and a
-   self-signed certificate on the device, `VERIFY`, `CHANGE REFERENCE DATA`,
-   `GENERAL AUTHENTICATE` signing. Verify: `sc_auth identities` lists the
-   card, `sc_auth verifypin` accepts the PIN, and
-   `ssh-keygen -D /usr/lib/ssh-keychain.dylib` prints the public key and a
-   signature test through ssh-keychain succeeds.
+3. **Keys, certificates and PIN.** `PIV GENKEY` makes the two P-256 keys
+   and self-signed certificates on the device, `VERIFY` with a retry
+   counter, `CHANGE REFERENCE DATA`, `GENERAL AUTHENTICATE` signing for 9A
+   and key agreement for 9D. Verify: `sc_auth identities` lists the card,
+   `sc_auth verifypin` accepts the PIN, and the token shows both identities
+   in `system_profiler SPSmartCardsDataType`. Done 2026-09-21: macOS
+   imported both, the authentication key as "Sign" and the key management
+   key as "Derive Decrypt Unwrap", so ECC P-256 is accepted for key
+   management and the RSA fallback is not needed. A signature and a key
+   agreement checked out through `scripts/apdu.py`. `ssh-keygen -D
+   /usr/lib/ssh-keychain.dylib` reports "cannot read public key from
+   pkcs11" against an unpaired token; it is not a check this step relies on.
 4. **Finger gate.** Signing waits for a match with CCID time extensions,
    the ring breathes, `EVT PIV` on the link. Verify: the ssh signature waits
    for a touch and fails without one; the app's panel shows during it.
