@@ -103,11 +103,25 @@ public struct HealthReport: Sendable {
     return checks
   }
 
+  /// Whether launchd has the daemon's agent, from the plist inside
+  /// MacTouch.app that the app registers or the one install.sh writes.
   private static func autostartCheck() -> HealthCheck {
-    let plist = NSHomeDirectory() + "/Library/LaunchAgents/dev.mactouch.daemon.plist"
-    return FileManager.default.fileExists(atPath: plist)
-      ? HealthCheck(.ok, "autostart", "launch agent installed, mactouchd starts at login")
-      : HealthCheck(.off, "autostart", "no launch agent; scripts/install.sh installs one")
+    let launchctl = Process()
+    launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    launchctl.arguments = ["print", "gui/\(getuid())/dev.mactouch.daemon"]
+    let output = Pipe()
+    launchctl.standardOutput = output
+    launchctl.standardError = FileHandle.nullDevice
+    guard (try? launchctl.run()) != nil else {
+      return HealthCheck(.off, "autostart", "cannot ask launchctl about the agent")
+    }
+    let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    launchctl.waitUntilExit()
+    guard launchctl.terminationStatus == 0 else {
+      return HealthCheck(.off, "autostart", "no launch agent; open MacTouch.app, or scripts/install.sh for a checkout")
+    }
+    let source = text.contains("com.apple.xpc.ServiceManagement") ? "MacTouch.app" : "scripts/install.sh"
+    return HealthCheck(.ok, "autostart", "launch agent from \(source), mactouchd starts at login")
   }
 
   /// Which PAM services name the module. The key itself is root-only, so this
