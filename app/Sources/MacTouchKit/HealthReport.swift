@@ -89,6 +89,8 @@ public struct HealthReport: Sendable {
         : HealthCheck(.warn, "fingers", "none enrolled; mactouch enroll 1"))
     }
 
+    if let piv = status?["piv"] { checks.append(pivCheck(piv)) }
+
     if let monitors = status?["monitors"] {
       if !monitors.split(separator: ",").contains("focus") {
         checks.append(HealthCheck(.off, "focus", "monitor off"))
@@ -105,6 +107,22 @@ public struct HealthReport: Sendable {
 
   /// Whether launchd has the daemon's agent, from the plist inside
   /// MacTouch.app that the app registers or the one install.sh writes.
+  /// The smart card side, docs/PIV.md: off, on without an identity, ready
+  /// but unpaired, or paired for login and unlock.
+  private static func pivCheck(_ piv: String) -> HealthCheck {
+    switch piv {
+    case "off": return HealthCheck(.off, "unlock", "smart card off; mactouch piv on")
+    case "none": return HealthCheck(.warn, "unlock", "smart card on but it has no identity; mactouch piv genkey")
+    default: break
+    }
+    guard let identities = SmartCardIdentities.current() else {
+      return HealthCheck(.off, "unlock", "identity ready; cannot ask sc_auth about pairing")
+    }
+    if !identities.paired.isEmpty { return HealthCheck(.ok, "unlock", "smart card paired; PIN then touch unlocks") }
+    if !identities.unpaired.isEmpty { return HealthCheck(.warn, "unlock", "identity ready, not paired; mactouch piv pair") }
+    return HealthCheck(.warn, "unlock", "identity ready but macOS does not list it; replug the device")
+  }
+
   private static func autostartCheck() -> HealthCheck {
     let launchctl = Process()
     launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
