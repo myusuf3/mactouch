@@ -17,6 +17,11 @@ size_t piv_apdu(const uint8_t *cmd, size_t len, uint8_t *resp, size_t cap);
 // Card power-off or USB reset: the PIN must be presented again.
 void piv_session_reset(void);
 
+// Off by default. While off the reader reports no card, so an unpaired
+// device is invisible to the Mac's smart card stack.
+bool piv_enabled(void);
+void piv_set_enabled(bool enabled);
+
 // The identity: P-256 keys for PIV Authentication (9A) and Key Management
 // (9D) with self-signed certificates, made here and never exported. Both
 // take a moment and are meant for the link's worker task.

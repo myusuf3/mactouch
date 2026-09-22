@@ -396,7 +396,8 @@ static void status(void) {
             count >= 0 ? "ready" : "offline", count,
             settings_touch_source() == TOUCH_SOURCE_PIN ? "pin" : "poll",
             touch_present() ? 1 : 0, touch_watch() ? "on" : "off",
-            led_colour_name(led_idle_colour()), ring, piv_has_identity() ? "identity" : "none");
+            led_colour_name(led_idle_colour()), ring,
+            !piv_enabled() ? "off" : piv_has_identity() ? "identity" : "none");
 }
 
 static void led_command(const char *args) {
@@ -520,8 +521,13 @@ static void handle(char *line) {
     submit(JOB_PAIR, "PAIR", args);
   } else if (strcmp(line, "PIV") == 0) {
     if (strcmp(args, "STATUS") == 0) {
-      link_send("OK PIV identity=%s pin=%s retries=%u", piv_has_identity() ? "yes" : "no",
-                piv_pin_is_default() ? "default" : "set", piv_pin_retries());
+      link_send("OK PIV enabled=%s identity=%s pin=%s retries=%u", piv_enabled() ? "yes" : "no",
+                piv_has_identity() ? "yes" : "no", piv_pin_is_default() ? "default" : "set", piv_pin_retries());
+    } else if (strcmp(args, "ON") == 0 || strcmp(args, "OFF") == 0) {
+      // The card appears or vanishes; re-enumerate so the host notices at once.
+      piv_set_enabled(args[1] == 'N');
+      link_send("OK PIV enabled=%s", piv_enabled() ? "yes" : "no");
+      usb_rescan(700);
     } else if (strcmp(args, "GENKEY") == 0) {
       submit(JOB_PIV_GENKEY, "PIV", args);
     } else if (strcmp(args, "RESET") == 0) {

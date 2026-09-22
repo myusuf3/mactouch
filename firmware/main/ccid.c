@@ -38,6 +38,7 @@ enum {
 // bStatus: bits 0-1 are the ICC state, bits 6-7 the command state.
 #define ICC_PRESENT_ACTIVE 0x00
 #define ICC_PRESENT_INACTIVE 0x01
+#define ICC_ABSENT 0x02
 #define CMD_OK 0x00
 #define CMD_FAILED 0x40
 #define CMD_TIME_EXTENSION 0x80
@@ -78,55 +79,80 @@ static uint8_t current_seq;
 
 // MARK: responses, sent from the CCID task
 
+// Replies are built straight into the USB buffer once the IN endpoint is
+// ours: a message is 3 KB, and a copy of it on the task's stack for every
+// helper is how the stack overflowed once. `begin` claims and writes the
+// header, `send` ships `outbound.length` bytes of data after it.
+static bool begin(uint8_t type, uint8_t seq, uint8_t status, uint8_t error, uint8_t param2) {
+  if (!usbd_edpt_claim(0, ep_in)) return false;
+  outbound.type = type;
+  outbound.length = 0;
+  outbound.slot = 0;
+  outbound.seq = seq;
+  outbound.param[0] = status;
+  outbound.param[1] = error;
+  outbound.param[2] = param2;
+  return true;
+}
+
 // A reply that fills its last packet exactly needs a zero-length packet
 // after it, or the host keeps waiting for more; sent from the IN completion.
-static void send(const ccid_message_t *reply) {
-  uint32_t total = CCID_HEADER + reply->length;
-  if (!usbd_edpt_claim(0, ep_in)) return;
-  memcpy(&outbound, reply, total);
+static void send(uint32_t data_len) {
+  outbound.length = data_len;
+  uint32_t total = CCID_HEADER + data_len;
   zlp_pending = total % CFG_TUD_ENDPOINT0_SIZE == 0;
   usbd_edpt_xfer(0, ep_in, (uint8_t *)&outbound, (uint16_t)total);
 }
 
 static void reply_slot_status(uint8_t seq, uint8_t status, uint8_t error) {
-  ccid_message_t reply = {.type = RDR_TO_PC_SLOT_STATUS, .length = 0, .slot = 0, .seq = seq};
-  reply.param[0] = status;
-  reply.param[1] = error;
-  reply.param[2] = 0;
-  send(&reply);
+  if (begin(RDR_TO_PC_SLOT_STATUS, seq, status, error, 0)) send(0);
 }
 
 // Tells the host the card is still working, so it resets its timeout. Sent
 // while the card waits for a finger; bError carries the multiplier.
 void ccid_time_extension(void) {
-  ccid_message_t reply = {.type = RDR_TO_PC_DATA_BLOCK, .length = 0, .slot = 0, .seq = current_seq};
-  reply.param[0] = ICC_PRESENT_ACTIVE | CMD_TIME_EXTENSION;
-  reply.param[1] = 1;
-  reply.param[2] = 0;
-  send(&reply);
+  if (begin(RDR_TO_PC_DATA_BLOCK, current_seq, ICC_PRESENT_ACTIVE | CMD_TIME_EXTENSION, 1, 0)) send(0);
 }
 
 static void reply_data_block(uint8_t seq, const uint8_t *data, uint32_t len) {
-  ccid_message_t reply = {.type = RDR_TO_PC_DATA_BLOCK, .length = len, .slot = 0, .seq = seq};
-  reply.param[0] = ICC_PRESENT_ACTIVE | CMD_OK;
-  reply.param[1] = 0;
-  reply.param[2] = 0;
-  memcpy(reply.data, data, len);
-  send(&reply);
+  if (!begin(RDR_TO_PC_DATA_BLOCK, seq, ICC_PRESENT_ACTIVE | CMD_OK, 0, 0)) return;
+  memcpy(outbound.data, data, len);
+  send(len);
 }
 
 static void reply_parameters(uint8_t seq) {
-  ccid_message_t reply = {.type = RDR_TO_PC_PARAMETERS, .length = sizeof(t1_parameters), .slot = 0, .seq = seq};
-  reply.param[0] = ICC_PRESENT_ACTIVE | CMD_OK;
-  reply.param[1] = 0;
-  reply.param[2] = 0x01;  // T=1
-  memcpy(reply.data, t1_parameters, sizeof(t1_parameters));
-  send(&reply);
+  if (!begin(RDR_TO_PC_PARAMETERS, seq, ICC_PRESENT_ACTIVE | CMD_OK, 0, 0x01 /* T=1 */)) return;
+  memcpy(outbound.data, t1_parameters, sizeof(t1_parameters));
+  send(sizeof(t1_parameters));
+}
+
+// With the card off the slot is empty: status says absent, and anything
+// that needs a card fails the way a real reader fails on an empty slot.
+static void handle_absent(const ccid_message_t *msg) {
+  switch (msg->type) {
+    case PC_TO_RDR_GET_SLOT_STATUS:
+    case PC_TO_RDR_ICC_POWER_OFF:
+    case PC_TO_RDR_ABORT:
+      reply_slot_status(msg->seq, ICC_ABSENT | CMD_OK, 0);
+      break;
+    case PC_TO_RDR_ICC_POWER_ON:
+    case PC_TO_RDR_XFR_BLOCK:
+      if (begin(RDR_TO_PC_DATA_BLOCK, msg->seq, ICC_ABSENT | CMD_FAILED, ERR_ICC_MUTE, 0)) send(0);
+      break;
+    default:
+      reply_slot_status(msg->seq, ICC_ABSENT | CMD_FAILED, ERR_CMD_NOT_SUPPORTED);
+      break;
+  }
 }
 
 static void handle(const ccid_message_t *msg) {
   if (msg->slot != 0) {
-    reply_slot_status(msg->seq, CMD_FAILED | 0x02, 0x05);  // slot does not exist
+    reply_slot_status(msg->seq, CMD_FAILED | ICC_ABSENT, 0x05);  // slot does not exist
+    return;
+  }
+  if (!piv_enabled()) {
+    powered = false;
+    handle_absent(msg);
     return;
   }
   switch (msg->type) {
@@ -149,6 +175,8 @@ static void handle(const ccid_message_t *msg) {
       }
       static uint8_t response[CCID_MAX_MESSAGE - CCID_HEADER];
       current_seq = msg->seq;
+      // The card may send time extensions while it works, so its answer
+      // cannot be built in the USB buffer; it is copied in afterwards.
       size_t n = piv_apdu(msg->data, msg->length, response, sizeof(response));
       reply_data_block(msg->seq, response, (uint32_t)n);
       break;
@@ -278,5 +306,6 @@ void ccid_init(void) {
   atr[sizeof(atr) - 1] = tck;
   requests = xQueueCreate(2, sizeof(ccid_message_t));
   configASSERT(requests);
-  configASSERT(xTaskCreate(ccid_task, "ccid", 6144, NULL, 3, NULL) == pdPASS);
+  // The card signs and agrees keys on this task; ECC in mbedtls wants room.
+  configASSERT(xTaskCreate(ccid_task, "ccid", 12288, NULL, 3, NULL) == pdPASS);
 }

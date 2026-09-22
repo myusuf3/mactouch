@@ -119,6 +119,7 @@ typedef struct {
 static slot_t auth_slot = {.key_name = "key9a", .cert_name = "cert9a", .common_name = "CN=mactouch PIV Authentication"};
 static slot_t key_mgmt_slot = {.key_name = "key9d", .cert_name = "cert9d", .common_name = "CN=mactouch PIV Key Management", .key_management = true};
 static bool identity_loaded;
+static bool enabled;
 static const uint8_t default_pin[PIN_LEN] = {'1', '2', '3', '4', '5', '6', 0xFF, 0xFF};
 static uint8_t pin[PIN_LEN];
 static uint8_t retries = PIN_RETRIES;
@@ -251,6 +252,13 @@ static bool make_slot(slot_t *slot) {
 }
 
 bool piv_has_identity(void) { return identity_loaded; }
+bool piv_enabled(void) { return enabled; }
+
+void piv_set_enabled(bool on) {
+  enabled = on;
+  nvs_set_u8(store, "on", on ? 1 : 0);
+  nvs_commit(store);
+}
 bool piv_pin_is_default(void) { return memcmp(pin, default_pin, sizeof(pin)) == 0; }
 uint8_t piv_pin_retries(void) { return retries; }
 
@@ -276,6 +284,7 @@ void piv_reset_identity(void) {
   nvs_commit(store);
   load_identity();
   load_pin();
+  enabled = false;
   pin_verified = false;
   xSemaphoreGive(lock);
   ESP_LOGI(TAG, "identity reset");
@@ -624,5 +633,7 @@ void piv_init(void) {
   mbedtls_pk_init(&key_mgmt_slot.key);
   load_identity();
   load_pin();
-  ESP_LOGI(TAG, "%s", identity_loaded ? "card ready with identity" : "card ready, no identity yet");
+  uint8_t on;
+  enabled = nvs_get_u8(store, "on", &on) == ESP_OK && on;
+  ESP_LOGI(TAG, "card %s, %s", enabled ? "on" : "off", identity_loaded ? "identity present" : "no identity");
 }
