@@ -26,7 +26,9 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   touch pin|poll                  how the device detects a finger
   monitor <lock|focus|mic|camera> on|off
   pair [--timeout SECONDS]        print the device key (once per boot, needs a touch)
-  piv status|genkey|reset         the smart card identity; genkey and reset need a touch
+  piv status|on|off               the smart card for screen unlock (off by default)
+  piv genkey|reset                make or destroy its identity; both need a touch
+  piv pair|unpair                 pair the card with your account through sc_auth
   gpio                            pin levels, for checking wiring
   selftest                        firmware signs the shared protocol vector
   events                          stream events until interrupted
@@ -106,10 +108,10 @@ func runViaDaemon(_ command: [String]) throws -> Int32 {
   case "idle", "watch", "touch", "monitor":
     request.positional = args
   case "piv":
-    guard let sub = args.first else { throw fail("piv status|genkey|reset") }
+    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail("piv status|on|off|genkey|reset|pair|unpair") }
     request.positional = [sub]
     timeout = 45
-    if sub != "status" { print("touch the sensor to confirm") }
+    if sub == "genkey" || sub == "reset" { print("touch the sensor to confirm") }
   case "identify":
     let seconds = Double(option("--timeout", in: &args) ?? "15") ?? 15
     request.values["timeout"] = String(seconds)
@@ -218,8 +220,8 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
     printFields(try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3))
   case "gpio": printFields(try device.request(.gpio))
   case "piv":
-    guard let sub = args.first, ["status", "genkey", "reset"].contains(sub) else { throw fail("piv status|genkey|reset") }
-    if sub != "status" { print("touch the sensor to confirm") }
+    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail("piv status|on|off|genkey|reset|pair|unpair") }
+    if sub == "genkey" || sub == "reset" { print("touch the sensor to confirm") }
     printFields(try device.request(.piv(sub.uppercased()), timeout: 40))
   case "selftest": try device.request(.selftest)
   case "events":
@@ -239,6 +241,8 @@ setlinebuf(stdout)
 do {
   let options = try parse(Array(CommandLine.arguments.dropFirst()))
   if options.command[0] == "doctor" { exit(runDoctor(direct: options.direct, port: options.port)) }
+  if options.command == ["piv", "pair"] { exit(try runPIVPair()) }
+  if options.command == ["piv", "unpair"] { exit(try runPIVUnpair()) }
   if !options.direct && ControlClient.isAvailable() {
     exit(try runViaDaemon(options.command))
   }

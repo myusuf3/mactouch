@@ -212,8 +212,8 @@ final class Daemon {
       }
 
     case "piv":
-      guard let sub = request.positional.first?.uppercased(), ["STATUS", "GENKEY", "RESET"].contains(sub) else { return fail("value") }
-      if sub == "STATUS" {
+      guard let sub = request.positional.first?.uppercased(), ["STATUS", "ON", "OFF", "GENKEY", "RESET"].contains(sub) else { return fail("value") }
+      if sub == "STATUS" || sub == "ON" || sub == "OFF" {
         passthrough(.piv(sub), verb, connection)
       } else {
         runLong(verb, connection, timeout: 40) { device in try device.request(.piv(sub), timeout: 40) }
