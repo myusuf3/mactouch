@@ -158,9 +158,16 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    2026-09-21: with a touch the wait ended in a match and a signature; with
    none the host was held fifteen seconds, PC/SC did not time out, and the
    card answered `6982`. The app's panel for PIV waits is step 8.
-5. **CLI, daemon and doctor.** `mactouch piv` commands, `piv=` in status,
-   the doctor row, `pair` and `unpair` around `sc_auth`. Verify against
-   `sc_auth list`.
+5. **CLI, daemon and doctor.** `mactouch piv on|off` with the card off by
+   default and the slot reported empty while off, `piv=off|none|identity`
+   in status, the doctor `unlock` row, `pair` and `unpair` around `sc_auth`
+   with the recovery notes printed first. Done 2026-09-22: off, macOS lists
+   no smart card and doctor says so; on, the token is back and doctor says
+   "identity ready, not paired". `pair` itself is exercised in step 7.
+   Lesson from this step: every CCID reply helper built a 3 KB message on
+   the task stack, and one more of them overflowed it, so the board
+   reboot-looped and never enumerated; replies are now written straight
+   into the USB buffer and the task has a 12 KB stack.
 6. **Flash encryption and secure boot.** Development mode first, release
    mode when the recovery path is written down; `PIV ON` refuses on a board
    without flash encryption. This burns eFuses and waits for a go.

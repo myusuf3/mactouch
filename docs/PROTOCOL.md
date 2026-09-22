@@ -19,7 +19,7 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | command | response | notes |
 | -- | -- | -- |
 | `PING` | `OK PONG proto=1 fw=0.1.0` | |
-| `STATUS` | `OK STATUS fw=0.1.0 proto=1 sensor=ready\|offline prints=N touch=pin\|poll finger=0\|1 watch=on\|off idle=<colour> ring=<mode>:<colour> piv=identity\|none` | |
+| `STATUS` | `OK STATUS fw=0.1.0 proto=1 sensor=ready\|offline prints=N touch=pin\|poll finger=0\|1 watch=on\|off idle=<colour> ring=<mode>:<colour> piv=off\|none\|identity` | |
 | `LED <mode> [<colour>] [<colour2>] [<cycles>]` | `OK LED` | temporary ring state until the next `LED` or `IDLE`. `cycles` 0 means forever. |
 | `IDLE <colour>` | `OK IDLE` | the state the ring returns to. Persisted in NVS. |
 | `IDENTIFY timeout=<ms> [prompt=<colour>] [nonce=<hex32>]` | `OK IDENTIFY slot=N score=S [mac=<hex64>]` or `ERR IDENTIFY reason=timeout\|cancelled\|sensor\|busy` | ring breathes `prompt` (default blue) while waiting. Each failed attempt emits `EVT NOMATCH` and flashes red, then keeps waiting. `mac` = HMAC-SHA256(device_key, "IDENTIFY\|nonce\|slot") when a nonce was given. |
@@ -29,7 +29,8 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | `WATCH on\|off` | `OK WATCH` | on: every touch runs an identify and emits `EVT MATCH` or `EVT NOMATCH`. Default off. |
 | `TOUCH pin\|poll` | `OK TOUCH` | presence source. `poll` asks the sensor for an image every 150 ms and works with no TouchOut wire. Persisted. |
 | `PAIR` | `OK PAIR key=<hex64>` or `ERR PAIR reason=...` | returns the device key once per boot, after a fingerprint match. Used by the PAM install. |
-| `PIV STATUS` | `OK PIV identity=yes\|no pin=default\|set retries=N` | the smart card side, docs/PIV.md |
+| `PIV STATUS` | `OK PIV enabled=yes\|no identity=yes\|no pin=default\|set retries=N` | the smart card side, docs/PIV.md |
+| `PIV ON` / `PIV OFF` | `OK PIV enabled=yes\|no` | persisted, off by default. Off, the reader reports an empty slot. Followed by a USB re-enumeration. |
 | `PIV GENKEY` / `PIV RESET` | `OK PIV identity=yes\|no` or `ERR PIV reason=exists\|timeout\|cancelled\|sensor\|failed` | long-running, after a fingerprint match. GENKEY makes the P-256 keys and certificates on the device; RESET destroys them and restores the default PIN. Either is followed by a USB re-enumeration so the host re-reads the card. |
 | `REBOOT` | `OK REBOOT` | |
 | `BOOTLOADER` | `ERR BOOTLOADER reason=unsupported` | reserved. Meant to reboot into ROM download mode; neither known sequence works on this board yet, and a failed attempt kills the USB link until a power cycle, so it is compiled out. |
@@ -103,7 +104,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
-| `piv status\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
+| `piv status\|on\|off\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
 | `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled` |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |

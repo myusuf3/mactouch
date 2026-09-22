@@ -67,6 +67,26 @@ requester's reason.
 Touch events pause while the sensor is being polled for images, which is why
 none appear during an identify or enrolment.
 
+### Screen unlock
+
+The device can be a PIV smart card as well, so the lock screen and login
+window take its PIN followed by a touch (docs/PIV.md, ADR-0013). Off by
+default.
+
+```
+mactouch piv on               # the Mac sees a smart card reader with a card
+mactouch piv genkey           # keys and certificates made on the device, needs a touch
+mactouch piv pair             # pair with your account through sc_auth, after reading the notes
+sc_auth changepin             # the PIN starts as 123456; change it
+mactouch piv unpair           # back to password only
+mactouch piv reset            # destroy the identity and the PIN, needs a touch
+```
+
+Keep your password and a second admin account, and never turn on smart card
+enforcement: pairing adds a way in and must never be the only one. Three
+wrong PINs block the card until `mactouch piv reset`. `mactouch doctor` has
+an `unlock` row for all of this.
+
 ### Menu bar app
 
 `scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. The app
