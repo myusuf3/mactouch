@@ -1,0 +1,8 @@
+# Name,     Type, SubType,  Offset,  Size,  Flags
+# The layout single_app_large gives, plus the key partition NVS encryption
+# needs. That partition is flash-encrypted; NVS itself is encrypted with the
+# keys inside it, so the PIV keys and the device key are never plain in flash.
+nvs,        data, nvs,      ,        24K,
+phy_init,   data, phy,      ,        4K,
+factory,    app,  factory,  0x10000, 1500K,
+nvs_key,    data, nvs_keys, ,        4K,   encrypted

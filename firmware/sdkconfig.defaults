@@ -1,6 +1,6 @@
 CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
 
 # USB identity. Espressif VID, project-specific PID.
 CONFIG_TINYUSB_DESC_USE_DEFAULT_PID=n
@@ -15,3 +15,18 @@ CONFIG_TINYUSB_CDC_EP_BUFSIZE=64
 
 # Logs go out the built-in USB-Serial/JTAG port, not the CDC link the app uses.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Flash encryption, development mode (ADR-0013 prerequisite 1, docs/PIV.md
+# step 6). The bootloader burns a key and encrypts the flash on first boot;
+# after that the board takes only `write_flash --encrypt`, which flash.sh
+# handles. Development mode keeps download-mode encryption available so the
+# board stays reflashable; release mode and secure boot come before any
+# board leaves the bench. NVS encryption rides on it so the keys in NVS are
+# never plain either.
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT=y
+CONFIG_SECURE_FLASH_UART_BOOTLOADER_ALLOW_ENC=y
+CONFIG_NVS_ENCRYPTION=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y

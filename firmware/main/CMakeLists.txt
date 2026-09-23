@@ -12,7 +12,7 @@ idf_component_register(
     "presence.c"
     "settings.c"
   INCLUDE_DIRS "."
-  REQUIRES app_update esp_tinyusb esp_timer nvs_flash mbedtls
+  REQUIRES app_update bootloader_support esp_tinyusb esp_timer nvs_flash mbedtls
   PRIV_REQUIRES esp_driver_uart esp_driver_gpio
 )
 

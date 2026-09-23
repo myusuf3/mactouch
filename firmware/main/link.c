@@ -8,6 +8,7 @@
 
 #include "board.h"
 #include "driver/gpio.h"
+#include "esp_flash_encrypt.h"
 #include "esp_system.h"
 #include "esp_private/periph_ctrl.h"
 #include "soc/periph_defs.h"
@@ -521,8 +522,13 @@ static void handle(char *line) {
     submit(JOB_PAIR, "PAIR", args);
   } else if (strcmp(line, "PIV") == 0) {
     if (strcmp(args, "STATUS") == 0) {
-      link_send("OK PIV enabled=%s identity=%s pin=%s retries=%u", piv_enabled() ? "yes" : "no",
-                piv_has_identity() ? "yes" : "no", piv_pin_is_default() ? "default" : "set", piv_pin_retries());
+      link_send("OK PIV enabled=%s identity=%s pin=%s retries=%u flash=%s", piv_enabled() ? "yes" : "no",
+                piv_has_identity() ? "yes" : "no", piv_pin_is_default() ? "default" : "set", piv_pin_retries(),
+                esp_flash_encryption_enabled() ? "encrypted" : "plain");
+    } else if (strcmp(args, "ON") == 0 && !esp_flash_encryption_enabled()) {
+      // A key readable from plain flash would make the device a stolen
+      // credential (ADR-0013); the card stays off on such a board.
+      link_send("ERR PIV reason=unencrypted");
     } else if (strcmp(args, "ON") == 0 || strcmp(args, "OFF") == 0) {
       // The card appears or vanishes; re-enumerate so the host notices at once.
       piv_set_enabled(args[1] == 'N');
