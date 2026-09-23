@@ -32,6 +32,15 @@ pkill -f "debug/mactouchd" 2>/dev/null || true
 print "Port: $port"
 esptool.py --chip esp32s3 --port "$port" --before default_reset --after no_reset --connect-attempts 5 flash_id | grep -E "Detected flash size|Chip is|MAC"
 
+# Once the bootloader has enabled flash encryption (SPI_BOOT_CRYPT_CNT set),
+# plain writes would leave unreadable garbage; the ROM encrypts on the way in
+# when asked. Before that first boot the plain write is what enables it.
+encrypt=()
+if espefuse.py --chip esp32s3 --port "$port" --before no_reset summary 2>/dev/null | grep -E "^SPI_BOOT_CRYPT_CNT" | grep -qE "0b0*1|= [1-7] "; then
+  encrypt=(--encrypt)
+  print "Flash encryption is on; writing encrypted."
+fi
+
 if $backup_wanted; then
   mkdir -p "$backups"
   backup="$backups/flash-$(date +%Y%m%d-%H%M%S).bin"
@@ -41,7 +50,7 @@ fi
 
 print "Flashing $firmware/build/mactouch.bin"
 cd "$firmware/build"
-esptool.py --chip esp32s3 --port "$port" -b 921600 --before default_reset --after watchdog_reset write_flash "@flash_args"
+esptool.py --chip esp32s3 --port "$port" -b 921600 --before default_reset --after watchdog_reset write_flash "${encrypt[@]}" "@flash_args"
 
 print
 print "Done. The board has been reset into the new firmware."
@@ -51,6 +60,6 @@ if $daemon_was_loaded; then
   print "mactouchd restarted."
 fi
 if $backup_wanted; then
-  print "Restore the old firmware with:"
+  print "Restore the old firmware with (the dump of an encrypted chip is ciphertext; it restores to the same chip as is):"
   print "  esptool.py --chip esp32s3 --port <port> write_flash 0 $backup"
 fi
