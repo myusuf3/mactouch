@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-09-22: prerequisite 1 is met on the author's board in development mode, flash encryption with NVS encryption and no secure boot, so the board stays reflashable while the feature is finished. Release mode and secure boot v2 remain the gate before any board leaves the bench, and `PIV ON` refuses on a board whose flash is not encrypted.
 
 ## Context
 

@@ -98,6 +98,27 @@ was there before:
 esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX write_flash 0 backups/flash-<date>.bin
 ```
 
+### Flash encryption
+
+The firmware enables flash encryption in development mode (`sdkconfig.defaults`,
+ADR-0013). The first boot after flashing a plain image burns an XTS-AES key
+into eFuses, encrypts the bootloader, partition table and app in place, and
+turns on NVS encryption with keys in the `nvs_key` partition; it takes a
+while and the board only enumerates once it is done. This cannot be undone.
+From then on the board only takes encrypted writes, which `flash.sh` does by
+adding `--encrypt` whenever `espefuse.py` reports `SPI_BOOT_CRYPT_CNT` set.
+Development mode keeps that download-mode path open, so the board stays
+reflashable; release mode and secure boot, which close it, wait until a board
+leaves the bench.
+
+Two consequences of the first encrypted boot. Everything in NVS is gone,
+because the old plain NVS is unreadable to the encrypted one: the device key
+is regenerated, so `sudo scripts/pam-install.sh --repair` is needed for sudo
+by fingerprint, the idle colour and touch source return to their defaults,
+and a PIV identity has to be made again with `mactouch piv genkey`. And a
+flash dump taken from an encrypted chip is ciphertext: it restores to the
+same chip as it is, and to nothing else.
+
 If you would rather not stare at the port list, `scripts/wait-for-bootloader.py`
 prints the port the moment a board appears in download mode:
 

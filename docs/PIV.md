@@ -170,7 +170,13 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    into the USB buffer and the task has a 12 KB stack.
 6. **Flash encryption and secure boot.** Development mode first, release
    mode when the recovery path is written down; `PIV ON` refuses on a board
-   without flash encryption. This burns eFuses and waits for a go.
+   without flash encryption. This burns eFuses and waited for a go, given
+   2026-09-22 for development mode: flash encryption with NVS encryption and
+   the `nvs_key` partition, download-mode encryption kept so the board stays
+   reflashable, `flash.sh` writing encrypted from then on. The first
+   encrypted boot wipes NVS, so the device key, the PIV identity and the
+   settings start over (BUILDING.md says what to rerun). Release mode and
+   secure boot v2 stay ahead of any board leaving the bench.
 7. **Pair the account.** Second admin account in place, password kept, then
    pair. Verify: lock the screen, PIN then touch unlocks; restart, PIN then
    touch logs in; `sc_auth unpair` restores the password-only state.
