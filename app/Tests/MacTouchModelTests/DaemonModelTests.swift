@@ -80,6 +80,7 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     #expect(model.notifyActive)
     #expect(model.idle == .cyan)
     #expect(model.monitors == [.lock, .mic])
+    #expect(model.idleCoveredNote == "A notification is showing, so the ring shows red until it ends.")
 
     model.setIdle(.red)
     model.setMonitor(.camera, enabled: true)

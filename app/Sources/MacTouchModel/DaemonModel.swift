@@ -71,6 +71,24 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var smartCardError: String?
 
   public var notifyActive: Bool { layers.contains("notify") }
+
+  /// Why the ring is not showing the idle colour, when it is not: the layer
+  /// on top and the colour it shows. A picked idle colour is saved but stays
+  /// hidden until that layer clears, which is otherwise baffling.
+  public var idleCoveredNote: String? {
+    guard deviceConnected, let top = layers.last, top != "idle" else { return nil }
+    let colour = ring?.split(separator: ":").dropFirst().first.map(String.init) ?? "another colour"
+    let cause: String
+    switch top {
+    case "focus": cause = "A Focus is on"
+    case "privacy": cause = "The microphone or camera is in use"
+    case "locked": return "The screen is locked, so the ring is off until you unlock."
+    case "notify": cause = "A notification is showing"
+    case "prompt": cause = "A request is waiting"
+    default: cause = "Another layer is active"
+    }
+    return "\(cause), so the ring shows \(colour) until it ends."
+  }
   public var firstFreeSlot: Int? { (1...capacity).first { !slots.contains($0) } }
 
   private let path: String

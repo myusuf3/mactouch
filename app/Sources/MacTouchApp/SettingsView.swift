@@ -38,7 +38,8 @@ struct GeneralPane: View {
         }
         .disabled(!model.deviceConnected)
       } footer: {
-        Text("The ring's resting colour, kept on the device.")
+        Text(model.idleCoveredNote.map { "The ring's resting colour, kept on the device. \($0)" }
+             ?? "The ring's resting colour, kept on the device.")
       }
       Section {
         Toggle("Launch at login", isOn: launchAtLogin)

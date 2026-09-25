@@ -73,6 +73,7 @@ struct StatusMenu: View {
       }
       .pickerStyle(.menu)
       .disabled(!model.deviceConnected)
+      if let note = model.idleCoveredNote { Text(note) }
       Menu("Monitors") {
         ForEach(MonitorName.allCases, id: \.self) { name in
           Toggle(name.label, isOn: monitor(name))
