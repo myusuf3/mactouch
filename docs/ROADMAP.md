@@ -10,10 +10,13 @@
   fingerprint request panel (ADR-0016), launch at login, and the bundle that
   carries the daemon and the CLI so install is one script and uninstall is
   deleting the app.
+- **Done, screen unlock:** PIV smart card emulation on the device (ADR-0013,
+  [PIV.md](PIV.md)): PIN then touch unlocks the lock screen and logs in
+  after a restart, verified on hardware. Flash encryption is on in
+  development mode; release mode and secure boot come before a board ships.
 - **Later:** AI-agent hooks that demand a fingerprint before destructive shell
   commands, tap and hold gestures mapped to Shortcuts, per-finger actions, Calendar countdowns, an SSH agent
-  with touch-to-sign, and PIV smart card emulation for unlocking the screen
-  (ADR-0013). PAM cannot reach the lock screen; see ADR-0012.
+  with touch-to-sign. PAM cannot reach the lock screen; see ADR-0012.
 
 Known limitation: entering download mode from software does not work on this
 board revision, so every reflash needs the BOOT button.

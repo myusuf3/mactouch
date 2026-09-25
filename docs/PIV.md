@@ -184,8 +184,8 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    identity used for authentication and doctor's unlock row is green. The
    PIN was changed from the default with `sc_auth changepin`; the card only
    takes 6 to 8 digits and rejects anything else before it looks at the old
-   PIN, so a malformed new PIN costs no try. The lock screen and restart
-   checks are the owner's to run.
+   PIN, so a malformed new PIN costs no try. The owner ran the lock screen
+   and restart checks on 2026-09-25: PIN then touch unlocked both.
 8. **App.** A Smart Card tab in Settings shows the card on or off, flash
    encryption, identity, PIN state and pairing, with Generate Identity,
    Pair with This Account (behind the administrator prompt, refused while
