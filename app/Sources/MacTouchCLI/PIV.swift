@@ -5,6 +5,10 @@ import MacTouchKit
 // Everything else under `piv` goes to the device.
 
 func runPIVPair() throws -> Int32 {
+  let card = try cardStatus()
+  guard card["pin"] != "default" else {
+    throw fail("the card's PIN is still the default 123456; change it first with sc_auth changepin (6 to 8 digits)")
+  }
   guard let identities = SmartCardIdentities.current() else { throw fail("cannot run sc_auth") }
   if let paired = identities.paired.first {
     print("already paired: \(paired.hash)")
@@ -37,6 +41,18 @@ func runPIVUnpair() throws -> Int32 {
     if code != 0 { return code }
   }
   return 0
+}
+
+/// The device's own view of the card, through the daemon when it runs.
+private func cardStatus() throws -> Fields {
+  if ControlClient.isAvailable() {
+    let client = try ControlClient()
+    defer { client.close() }
+    return try client.request(ControlRequest(verb: "piv", positional: ["status"]))
+  }
+  let device = try openDevice(nil)
+  defer { device.close() }
+  return try device.request(.piv("STATUS"))
 }
 
 /// Pairing changes the user's keychain and needs an administrator, so it
