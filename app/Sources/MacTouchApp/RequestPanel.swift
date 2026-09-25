@@ -58,9 +58,9 @@ struct RequestView: View {
     HStack(spacing: 14) {
       Image(systemName: "touchid")
         .font(.system(size: 36))
-        .foregroundStyle(model.request?.kind == "nonce" ? Color.primary : Color.blue)
+        .foregroundStyle(model.request?.kind == "plain" ? Color.blue : Color.primary)
       VStack(alignment: .leading, spacing: 3) {
-        Text(model.request?.kind == "nonce" ? "Authentication request" : "Fingerprint requested")
+        Text(title)
           .font(.headline)
         Text(model.request?.reason ?? "")
           .foregroundStyle(.secondary)
@@ -70,11 +70,23 @@ struct RequestView: View {
           .foregroundStyle(model.noMatches > 0 ? Color.red : Color.secondary)
       }
       Spacer(minLength: 12)
-      Button("Cancel") { model.cancel() }
+      // The card cannot be interrupted once it waits; the host gives up
+      // on its own when the wait ends.
+      if model.request?.kind != "piv" {
+        Button("Cancel") { model.cancel() }
+      }
     }
     .padding(20)
     .frame(width: 440)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+  }
+
+  private var title: String {
+    switch model.request?.kind {
+    case "nonce": return "Authentication request"
+    case "piv": return "Smart card sign-in"
+    default: return "Fingerprint requested"
+    }
   }
 
   private var instruction: String {

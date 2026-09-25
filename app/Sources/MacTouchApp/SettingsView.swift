@@ -15,6 +15,8 @@ struct SettingsView: View {
         .tabItem { Label("General", systemImage: "gearshape") }
       FingersPane(model: model)
         .tabItem { Label("Fingers", systemImage: "touchid") }
+      SmartCardPane(model: model)
+        .tabItem { Label("Smart Card", systemImage: "lock.shield") }
       DiagnosticsPane(model: model)
         .tabItem { Label("Diagnostics", systemImage: "stethoscope") }
     }
@@ -138,6 +140,96 @@ struct FingersPane: View {
 
   private var deleting: Binding<Bool> {
     Binding(get: { slotToDelete != nil }, set: { if !$0 { slotToDelete = nil } })
+  }
+}
+
+/// Screen unlock through the device's smart card, docs/PIV.md. Everything
+/// here is also `mactouch piv`; the PIN is changed with sc_auth, because
+/// macOS asks for it in its own secure prompt.
+struct SmartCardPane: View {
+  @ObservedObject var model: DaemonModel
+  @State private var confirmingReset = false
+  @State private var confirmingPair = false
+
+  var body: some View {
+    Form {
+      if let card = model.smartCard {
+        Section {
+          Toggle("Smart card", isOn: enabled(card))
+            .disabled(!card.encrypted && !card.enabled || model.smartCardAction != nil)
+          LabeledContent("Flash", value: card.encrypted ? "Encrypted" : "Not encrypted")
+          LabeledContent("Identity", value: card.identity ? "On the device" : "None")
+          LabeledContent("PIN", value: card.pinIsDefault ? "Default (123456)" : "Set, \(card.retries) tries left")
+          LabeledContent("Pairing", value: pairingText(card))
+        } footer: {
+          Text(footer(card))
+        }
+        Section {
+          if !card.identity {
+            Button("Generate Identity") { model.generateSmartCardIdentity() }
+              .disabled(!card.enabled || model.smartCardAction != nil)
+          } else if card.paired == true {
+            Button("Unpair from This Account") { model.unpairSmartCard() }
+              .disabled(model.smartCardAction != nil)
+          } else {
+            Button("Pair with This Account…") { confirmingPair = true }
+              .disabled(card.pinIsDefault || card.unpairedHash == nil || model.smartCardAction != nil)
+          }
+          if card.identity {
+            Button("Reset Card…", role: .destructive) { confirmingReset = true }
+              .disabled(model.smartCardAction != nil)
+          }
+          if let action = model.smartCardAction {
+            Text(progress(action)).foregroundStyle(.secondary)
+          } else if let error = model.smartCardError {
+            Text(error).foregroundStyle(.red)
+          }
+        }
+      } else {
+        Text(model.deviceConnected ? "Reading the card…" : "Connect the device to see its smart card")
+          .foregroundStyle(.secondary)
+      }
+    }
+    .formStyle(.grouped)
+    .onAppear { model.refreshSmartCard() }
+    .confirmationDialog("Pair the smart card with your account?", isPresented: $confirmingPair, titleVisibility: .visible) {
+      Button("Pair") { model.pairSmartCard() }
+    } message: {
+      Text("The lock screen will accept the card's PIN and a touch. Keep your password and a second admin account, and never turn on smart card enforcement.")
+    }
+    .confirmationDialog("Reset the smart card?", isPresented: $confirmingReset, titleVisibility: .visible) {
+      Button("Reset Card", role: .destructive) { model.resetSmartCard() }
+    } message: {
+      Text("The keys are destroyed and the PIN returns to 123456. Any pairing stops working; unpair first to keep your account tidy.")
+    }
+  }
+
+  private func enabled(_ card: DaemonModel.SmartCard) -> Binding<Bool> {
+    Binding(get: { card.enabled }, set: { model.setSmartCard(enabled: $0) })
+  }
+
+  private func pairingText(_ card: DaemonModel.SmartCard) -> String {
+    guard card.identity else { return "Needs an identity" }
+    switch card.paired {
+    case true?: return "Paired with this account"
+    case false?: return "Not paired"
+    case nil: return "Unknown"
+    }
+  }
+
+  private func footer(_ card: DaemonModel.SmartCard) -> String {
+    if !card.encrypted { return "The card stays off on a board whose flash is not encrypted." }
+    if card.identity && card.pinIsDefault { return "Change the PIN before pairing: run sc_auth changepin in Terminal, six to eight digits." }
+    return "Lock screen and login take the card's PIN, then a touch."
+  }
+
+  private func progress(_ action: String) -> String {
+    switch action {
+    case "genkey": return "Touch the sensor to make the keys…"
+    case "reset": return "Touch the sensor to reset the card…"
+    case "pair": return "Follow the macOS prompts: administrator, then password and PIN…"
+    default: return "Unpairing…"
+    }
   }
 }
 
