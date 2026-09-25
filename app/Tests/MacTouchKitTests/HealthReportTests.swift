@@ -4,7 +4,8 @@ import Testing
 
 @Suite struct HealthReports {
   /// A daemon that answers `status` with the given fields and `selftest` as told.
-  private func fakeDaemon(status: [(String, String)], selftestFails: String? = nil) throws -> ControlServer {
+  private func fakeDaemon(status: [(String, String)], selftestFails: String? = nil,
+                          piv: [(String, String)] = []) throws -> ControlServer {
     let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-health-\(UUID().uuidString.prefix(8)).sock")
     server.handler = { request, connection in
       switch request.verb {
@@ -12,6 +13,7 @@ import Testing
       case "selftest":
         if let reason = selftestFails { connection.send(ControlLine.err("selftest", reason)) }
         else { connection.send(ControlLine.ok("selftest")) }
+      case "piv": connection.send(ControlLine.ok("piv", piv))
       default: connection.send(ControlLine.err(request.verb, "unknown"))
       }
     }
@@ -73,5 +75,28 @@ import Testing
     #expect(seen["daemon"] == .off)
     #expect(seen["device"] == .bad)
     #expect(seen["sensor"] == .off)
+  }
+
+  private func unlockRow(piv: String, pin: String, identities: SmartCardIdentities?) throws -> HealthCheck? {
+    let server = try fakeDaemon(status: [("device", "connected"), ("piv", piv)],
+                                piv: [("enabled", "yes"), ("identity", "yes"), ("pin", pin)])
+    defer { server.stop() }
+    return HealthReport.viaDaemon(at: server.path, identities: { identities }).checks.first { $0.name == "unlock" }
+  }
+
+  @Test func unlockRowFollowsTheCard() throws {
+    let unpaired = SmartCardIdentities(unpaired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
+    let paired = SmartCardIdentities(paired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
+    #expect(try unlockRow(piv: "off", pin: "set", identities: paired)?.verdict == .off)
+    #expect(try unlockRow(piv: "none", pin: "set", identities: nil)?.verdict == .warn)
+    #expect(try unlockRow(piv: "identity", pin: "set", identities: unpaired)?.detail.contains("piv pair") == true)
+    #expect(try unlockRow(piv: "identity", pin: "set", identities: paired)?.verdict == .ok)
+  }
+
+  @Test func defaultPINWarnsEvenWhenPaired() throws {
+    let paired = SmartCardIdentities(paired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
+    let row = try unlockRow(piv: "identity", pin: "default", identities: paired)
+    #expect(row?.verdict == .warn)
+    #expect(row?.detail.contains("changepin") == true)
   }
 }

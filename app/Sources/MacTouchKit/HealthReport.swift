@@ -17,11 +17,14 @@ public struct HealthReport: Sendable {
   public let checks: [HealthCheck]
   public var healthy: Bool { !checks.contains { $0.verdict == .bad } }
 
-  /// Asks the running daemon.
-  public static func viaDaemon(at path: String = ControlSocketPath.default) -> HealthReport {
+  /// Asks the running daemon. `identities` is how the smart card row learns
+  /// about pairing; tests pass a fixed answer instead of running sc_auth.
+  public static func viaDaemon(at path: String = ControlSocketPath.default,
+                               identities: () -> SmartCardIdentities? = SmartCardIdentities.current) -> HealthReport {
     var checks = [autostartCheck()]
     var status: Fields?
     var selftest: Result<Void, Error>?
+    var piv: Fields?
     do {
       let client = try ControlClient(path: path)
       defer { client.close() }
@@ -29,12 +32,13 @@ public struct HealthReport: Sendable {
       checks.append(HealthCheck(.ok, "daemon", "running"))
       if status?["device"] == "connected" {
         selftest = Result { _ = try client.request(ControlRequest(verb: "selftest")) }
+        if status?["piv"] != nil { piv = try? client.request(ControlRequest(verb: "piv", positional: ["status"])) }
       }
     } catch {
       checks.append(HealthCheck(.bad, "daemon", "socket present but not answering (\(error)); scripts/daemon.sh restart"))
     }
     checks.append(deviceCheck(connected: status?["device"] == "connected", firmware: status?["fw"]))
-    return HealthReport(checks: checks + statusChecks(status, selftest: selftest))
+    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv, identities: identities))
   }
 
   /// Asks the device over its serial port. `daemonSkipped` says the caller
@@ -46,12 +50,14 @@ public struct HealthReport: Sendable {
       : HealthCheck(.warn, "daemon", "not running; monitors, notify and hooks need it. scripts/daemon.sh start"))
     var status: Fields?
     var selftest: Result<Void, Error>?
+    var piv: Fields?
     do {
       let device = try port.map(Device.init(path:)) ?? Device()
       defer { device.close() }
       status = try device.request(.status)
       checks.append(deviceCheck(connected: true, firmware: status?["fw"]))
       selftest = Result { _ = try device.request(.selftest) }
+      if status?["piv"] != nil { piv = try? device.request(.piv("STATUS")) }
     } catch DeviceError.notFound {
       checks.append(deviceCheck(connected: false, firmware: nil))
     } catch DeviceError.openFailed(let path, let code) where code == EBUSY {
@@ -59,10 +65,11 @@ public struct HealthReport: Sendable {
     } catch {
       checks.append(HealthCheck(.bad, "device", "\(error); replug the board"))
     }
-    return HealthReport(checks: checks + statusChecks(status, selftest: selftest))
+    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv, identities: SmartCardIdentities.current))
   }
 
-  private static func statusChecks(_ status: Fields?, selftest: Result<Void, Error>?) -> [HealthCheck] {
+  private static func statusChecks(_ status: Fields?, selftest: Result<Void, Error>?, piv: Fields?,
+                                   identities: () -> SmartCardIdentities?) -> [HealthCheck] {
     var checks: [HealthCheck] = []
 
     switch status?["sensor"] {
@@ -89,7 +96,7 @@ public struct HealthReport: Sendable {
         : HealthCheck(.warn, "fingers", "none enrolled; mactouch enroll 1"))
     }
 
-    if let piv = status?["piv"] { checks.append(pivCheck(piv)) }
+    if let state = status?["piv"] { checks.append(pivCheck(state, pinIsDefault: piv?["pin"] == "default", identities: identities)) }
 
     if let monitors = status?["monitors"] {
       if !monitors.split(separator: ",").contains("focus") {
@@ -108,14 +115,20 @@ public struct HealthReport: Sendable {
   /// Whether launchd has the daemon's agent, from the plist inside
   /// MacTouch.app that the app registers or the one install.sh writes.
   /// The smart card side, docs/PIV.md: off, on without an identity, ready
-  /// but unpaired, or paired for login and unlock.
-  private static func pivCheck(_ piv: String) -> HealthCheck {
+  /// but unpaired, or paired for login and unlock. A card still on the
+  /// factory PIN is a warning whatever else is true, because 123456 is the
+  /// first thing anyone holding the device would try.
+  private static func pivCheck(_ piv: String, pinIsDefault: Bool,
+                               identities: () -> SmartCardIdentities?) -> HealthCheck {
     switch piv {
     case "off": return HealthCheck(.off, "unlock", "smart card off; mactouch piv on")
     case "none": return HealthCheck(.warn, "unlock", "smart card on but it has no identity; mactouch piv genkey")
     default: break
     }
-    guard let identities = SmartCardIdentities.current() else {
+    if pinIsDefault {
+      return HealthCheck(.warn, "unlock", "PIN is still the default 123456; sc_auth changepin")
+    }
+    guard let identities = identities() else {
       return HealthCheck(.off, "unlock", "identity ready; cannot ask sc_auth about pairing")
     }
     if !identities.paired.isEmpty { return HealthCheck(.ok, "unlock", "smart card paired; PIN then touch unlocks") }

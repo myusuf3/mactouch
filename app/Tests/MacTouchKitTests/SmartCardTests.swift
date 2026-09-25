@@ -16,6 +16,15 @@ import Testing
                                           name: "Certificate For PIV Authentication (mactouch PIV Authentication)")])
   }
 
+  @Test func readsThePairedHeaderSCAuthPrints() {
+    let text = """
+    SmartCard: com.apple.pivtoken:F7D67D0F448644819F9629CFBDEFBCAB
+    Paired identities which are used for authentication:
+    F8C184018F8E5AC7726304C1A72CAF53B67A9E66\tmyusuf3 - Certificate For PIV Authentication (mactouch PIV Authentication)
+    """
+    #expect(SmartCardIdentities.parse(text).paired.map(\.hash) == ["F8C184018F8E5AC7726304C1A72CAF53B67A9E66"])
+  }
+
   @Test func emptyWhenNothingIsListed() {
     #expect(SmartCardIdentities.parse("SmartCard: com.apple.pivtoken:X\n") == SmartCardIdentities())
   }
