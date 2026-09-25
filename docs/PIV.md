@@ -180,6 +180,12 @@ Each step ships on its own and is verified on the real hardware and this Mac.
 7. **Pair the account.** Second admin account in place, password kept, then
    pair. Verify: lock the screen, PIN then touch unlocks; restart, PIN then
    touch logs in; `sc_auth unpair` restores the password-only state.
+   Paired 2026-09-25 with `mactouch piv pair`: `sc_auth list` shows the
+   identity used for authentication and doctor's unlock row is green. The
+   PIN was changed from the default with `sc_auth changepin`; the card only
+   takes 6 to 8 digits and rejects anything else before it looks at the old
+   PIN, so a malformed new PIN costs no try. The lock screen and restart
+   checks are the owner's to run.
 8. **App.** PIV pane and the panel for PIV touches.
 
 Steps 1 to 5 risk nothing: the card is off by default and unpaired. Step 6
