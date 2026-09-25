@@ -41,6 +41,8 @@ TBD. Until there is a packaged release, see [building and flashing](docs/BUILDIN
 - [Hardware notes](docs/HARDWARE.md)
 - [Status and roadmap](docs/ROADMAP.md)
 - [Menu bar app plan](docs/APP.md)
+- [Screen unlock plan](docs/PIV.md)
+- [Onboarding and updates plan](docs/ONBOARDING.md)
 - [Design](docs/DESIGN.md) and [decision records](docs/adr/)
 
 ## Credits
