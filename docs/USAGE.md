@@ -82,8 +82,10 @@ mactouch piv unpair           # back to password only
 mactouch piv reset            # destroy the identity and the PIN, needs a touch
 ```
 
-Keep your password and a second admin account, and never turn on smart card
-enforcement: pairing adds a way in and must never be the only one. Three
+The app's Settings has a Smart Card tab with the same controls. Doctor warns
+and `piv pair` refuses while the PIN is still 123456, and the card only
+takes six to eight digits. Keep your password and a second admin account,
+and never turn on smart card enforcement: pairing adds a way in and must never be the only one. Three
 wrong PINs block the card until `mactouch piv reset`. `mactouch doctor` has
 an `unlock` row for all of this.
 

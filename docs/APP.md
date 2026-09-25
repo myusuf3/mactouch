@@ -71,6 +71,8 @@ A `Settings` scene with a `TabView`:
 - **Monitors.** The four toggles with one line each on what they read and, for
   Focus, which source is active and a button that opens the Full Disk Access
   pane when it is on the menu bar fallback.
+- **Smart Card.** Screen unlock through the device's PIV card (docs/PIV.md):
+  on or off, identity, PIN state, pairing, and the actions around them.
 - **Diagnostics.** The same rows as `mactouch doctor`, live, plus firmware
   version and a "Run self-test" button.
 

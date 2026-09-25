@@ -186,7 +186,15 @@ Each step ships on its own and is verified on the real hardware and this Mac.
    takes 6 to 8 digits and rejects anything else before it looks at the old
    PIN, so a malformed new PIN costs no try. The lock screen and restart
    checks are the owner's to run.
-8. **App.** PIV pane and the panel for PIV touches.
+8. **App.** A Smart Card tab in Settings shows the card on or off, flash
+   encryption, identity, PIN state and pairing, with Generate Identity,
+   Pair with This Account (behind the administrator prompt, refused while
+   the PIN is the default), Unpair, and Reset Card with a destructive
+   confirmation. The PIN itself is changed with `sc_auth changepin`, since
+   macOS asks for it in its own prompt. When the card waits for a finger
+   the request panel shows "Smart card sign-in" without a Cancel button,
+   because a waiting card cannot be interrupted. Doctor and `piv pair` both
+   refuse to treat a card on the default PIN as ready.
 
 Steps 1 to 5 risk nothing: the card is off by default and unpaired. Step 6
 is the irreversible one. Step 7 is where the device becomes a credential.
