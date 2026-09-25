@@ -16,10 +16,28 @@ public final class DaemonModel: ObservableObject {
     case failed(String)
   }
 
+  /// The smart card side of the device, docs/PIV.md, with the Mac's view
+  /// of its pairing. `paired` is nil when sc_auth could not be asked.
+  public struct SmartCard: Equatable {
+    public var enabled: Bool
+    public var identity: Bool
+    public var pinIsDefault: Bool
+    public var retries: Int
+    public var encrypted: Bool
+    public var paired: Bool?
+    public var unpairedHash: String?
+    public init(enabled: Bool, identity: Bool, pinIsDefault: Bool, retries: Int, encrypted: Bool,
+                paired: Bool?, unpairedHash: String?) {
+      self.enabled = enabled; self.identity = identity; self.pinIsDefault = pinIsDefault
+      self.retries = retries; self.encrypted = encrypted; self.paired = paired; self.unpairedHash = unpairedHash
+    }
+  }
+
   /// A fingerprint request in flight on the daemon.
   public struct Request: Equatable {
     /// `plain` for an ordinary identify, `nonce` for one carrying a nonce,
-    /// which is how PAM asks; the ring is blue or white to match.
+    /// which is how PAM asks, and `piv` when the smart card waits for a
+    /// finger before it signs; the ring is blue for plain, white otherwise.
     public let kind: String
     public let reason: String
     public init(kind: String, reason: String) { self.kind = kind; self.reason = reason }
@@ -46,6 +64,11 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var request: Request?
   /// Failed attempts during the current request, so the panel can say so.
   @Published public private(set) var noMatches = 0
+  @Published public private(set) var smartCard: SmartCard?
+  /// The smart card action in flight, for the pane to show and to disable
+  /// the others: "genkey", "reset", "pair" or "unpair".
+  @Published public private(set) var smartCardAction: String?
+  @Published public private(set) var smartCardError: String?
 
   public var notifyActive: Bool { layers.contains("notify") }
   public var firstFreeSlot: Int? { (1...capacity).first { !slots.contains($0) } }
@@ -145,6 +168,112 @@ public final class DaemonModel: ObservableObject {
     }
   }
 
+  // MARK: smart card
+
+  public func refreshSmartCard() {
+    requests.async { [weak self] in self?.loadSmartCard() }
+  }
+
+  public func setSmartCard(enabled: Bool) {
+    send(ControlRequest(verb: "piv", positional: [enabled ? "on" : "off"]))
+    requests.async { [weak self] in self?.loadSmartCard() }
+  }
+
+  /// Makes the card's keys on the device. Waits for a finger.
+  public func generateSmartCardIdentity() { runSmartCard("genkey") }
+
+  /// Destroys the keys and restores the default PIN. Waits for a finger.
+  public func resetSmartCard() { runSmartCard("reset") }
+
+  private func runSmartCard(_ action: String) {
+    guard smartCardAction == nil else { return }
+    smartCardAction = action
+    smartCardError = nil
+    requests.async { [weak self] in
+      guard let self else { return }
+      var failure: String?
+      do {
+        let client = try ControlClient(path: path)
+        defer { client.close() }
+        _ = try client.request(ControlRequest(verb: "piv", positional: [action]), timeout: 45)
+      } catch {
+        failure = describe(error)
+      }
+      // The device drops off USB and comes back after either action.
+      Thread.sleep(forTimeInterval: 2)
+      loadSmartCard()
+      publish { model in
+        model.smartCardAction = nil
+        model.smartCardError = failure
+      }
+    }
+  }
+
+  /// Pairs the card with this account through sc_auth, behind the standard
+  /// administrator prompt; macOS then asks for the login password and the
+  /// PIN itself to wrap the keychain. Refused while the PIN is the default.
+  public func pairSmartCard() {
+    guard smartCardAction == nil, let card = smartCard, !card.pinIsDefault, let hash = card.unpairedHash else { return }
+    runSCAuth("pair", ["pair", "-u", NSUserName(), "-h", hash])
+  }
+
+  public func unpairSmartCard() {
+    guard smartCardAction == nil else { return }
+    runSCAuth("unpair", ["unpair", "-u", NSUserName()])
+  }
+
+  private func runSCAuth(_ action: String, _ arguments: [String]) {
+    smartCardAction = action
+    smartCardError = nil
+    requests.async { [weak self] in
+      guard let self else { return }
+      let failure = Self.runAsAdministrator(["/usr/sbin/sc_auth"] + arguments)
+      loadSmartCard()
+      publish { model in
+        model.smartCardAction = nil
+        model.smartCardError = failure
+      }
+    }
+  }
+
+  /// One command as root through AppleScript's administrator prompt. Each
+  /// word is passed through `quoted form of`, so nothing is re-parsed by the
+  /// shell. Returns nil on success or the reason it failed.
+  private static func runAsAdministrator(_ words: [String]) -> String? {
+    let escape = { (s: String) in s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
+    let command = words.map { "quoted form of \"\(escape($0))\"" }.joined(separator: " & \" \" & ")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "do shell script \(command) with administrator privileges"]
+    let errors = Pipe()
+    process.standardError = errors
+    process.standardOutput = FileHandle.nullDevice
+    do { try process.run() } catch { return error.localizedDescription }
+    process.waitUntilExit()
+    guard process.terminationStatus != 0 else { return nil }
+    let text = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    return text.contains("-128") ? "cancelled" : text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private func loadSmartCard() {
+    guard let client = try? ControlClient(path: path) else { return }
+    defer { client.close() }
+    guard let status = try? client.request(ControlRequest(verb: "piv", positional: ["status"])) else {
+      publish { $0.smartCard = nil }
+      return
+    }
+    let identities = status["identity"] == "yes" ? SmartCardIdentities.current() : SmartCardIdentities()
+    let card = SmartCard(
+      enabled: status["enabled"] == "yes",
+      identity: status["identity"] == "yes",
+      pinIsDefault: status["pin"] == "default",
+      retries: status.int("retries") ?? 0,
+      encrypted: status["flash"] == "encrypted",
+      paired: identities.map { !$0.paired.isEmpty },
+      unpairedHash: identities?.unpaired.first?.hash)
+    publish { $0.smartCard = card }
+  }
+
   // MARK: requests
 
   public func cancel() {
@@ -193,6 +322,7 @@ public final class DaemonModel: ObservableObject {
     case "device":
       publish { $0.deviceConnected = fields["state"] == "connected" }
       refreshStatus()
+      loadSmartCard()
     case "ring":
       publish { $0.ring = fields["state"] }
       refreshStatus()
@@ -205,6 +335,14 @@ public final class DaemonModel: ObservableObject {
       }
     case "nomatch":
       publish { $0.noMatches += 1 }
+    case "piv":
+      // The card waits for a finger before signing: the lock screen, a
+      // login, or anything else using its key. Shown like any request.
+      let pending = fields["state"] == "pending"
+      publish { model in
+        model.request = pending ? Request(kind: "piv", reason: "The smart card is waiting to sign") : nil
+        model.noMatches = 0
+      }
     default:
       break
     }

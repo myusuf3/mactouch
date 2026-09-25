@@ -48,6 +48,13 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
       connection.send(ControlLine.ok("enroll", [("slot", request["slot"] ?? "?")]))
     case "selftest":
       connection.send(ControlLine.ok("selftest"))
+    case "piv":
+      if request.positional == ["status"] {
+        connection.send(ControlLine.ok("piv", [("enabled", "yes"), ("identity", "no"), ("pin", "default"), ("retries", "3"), ("flash", "encrypted")]))
+      } else {
+        received.append(request.line)
+        connection.send(ControlLine.ok("piv"))
+      }
     case "hello":
       received.hello()
       connection.send(ControlLine.ok("hello", [("proto", "1")]))
@@ -150,5 +157,27 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     #expect(rows["daemon"] == .ok)
     #expect(rows["signature"] == .ok)
     #expect(rows["fingers"] == .ok)
+  }
+
+  @Test @MainActor func readsTheSmartCardAndShowsItsTouchAsARequest() async throws {
+    let received = Received()
+    let server = try fakeDaemon(recording: received)
+    defer { server.stop() }
+    let model = DaemonModel(path: server.path)
+    try await waitUntil { model.daemonRunning }
+    model.refreshSmartCard()
+    try await waitUntil { model.smartCard != nil }
+    #expect(model.smartCard?.enabled == true)
+    #expect(model.smartCard?.encrypted == true)
+    #expect(model.smartCard?.pinIsDefault == true)
+    #expect(model.smartCard?.identity == false)
+
+    model.setSmartCard(enabled: false)
+    try await waitUntil { received.all.contains("piv off") }
+
+    server.broadcast(ControlLine.evt("piv", [("state", "pending")]))
+    try await waitUntil { model.request?.kind == "piv" }
+    server.broadcast(ControlLine.evt("piv", [("state", "done"), ("result", "match")]))
+    try await waitUntil { model.request == nil }
   }
 }
