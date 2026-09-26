@@ -36,7 +36,10 @@ Each step ships on its own and is verified on hardware.
    Verify: one last BOOT flash moves this board to the new layout with its
    identity, pairing and device key intact; an update over the link then
    installs with a touch and no button; a deliberately broken image rolls
-   back on its own.
+   back on its own. Done 2026-09-26: the move kept the device key, the
+   identity, the PIN and the pairing; 0.2.1 installed over the link in 17
+   seconds and confirmed itself; a crash-test image booted, crashed and the
+   board came back on 0.2.1 by itself, reported as a rollback.
 2. **Firmware in the app.** The bundle carries the firmware image and its
    version; the app offers an update when the board is older, with progress
    and the touch prompt in the request panel. Verify: bump the version,

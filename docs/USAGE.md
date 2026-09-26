@@ -89,6 +89,15 @@ and never turn on smart card enforcement: pairing adds a way in and must never b
 wrong PINs block the card until `mactouch piv reset`. `mactouch doctor` has
 an `unlock` row for all of this.
 
+### Firmware
+
+```
+mactouch firmware version     # what the board runs, and what MacTouch.app carries
+mactouch firmware update      # install the carried firmware over the link, after a touch
+```
+
+A failed update rolls back on its own and the command says so.
+
 ### Menu bar app
 
 `scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. The app

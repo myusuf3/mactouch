@@ -19,7 +19,7 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | command | response | notes |
 | -- | -- | -- |
 | `PING` | `OK PONG proto=1 fw=0.1.0` | |
-| `STATUS` | `OK STATUS fw=0.1.0 proto=1 sensor=ready\|offline prints=N touch=pin\|poll finger=0\|1 watch=on\|off idle=<colour> ring=<mode>:<colour> piv=off\|none\|identity` | |
+| `STATUS` | `OK STATUS fw=0.1.0 proto=1 sensor=ready\|offline prints=N touch=pin\|poll finger=0\|1 watch=on\|off idle=<colour> ring=<mode>:<colour> piv=off\|none\|identity slot=ota_0\|ota_1 [probation=yes]` | `probation=yes` while a freshly installed image has not yet confirmed itself |
 | `LED <mode> [<colour>] [<colour2>] [<cycles>]` | `OK LED` | temporary ring state until the next `LED` or `IDLE`. `cycles` 0 means forever. |
 | `IDLE <colour>` | `OK IDLE` | the state the ring returns to. Persisted in NVS. |
 | `IDENTIFY timeout=<ms> [prompt=<colour>] [nonce=<hex32>]` | `OK IDENTIFY slot=N score=S [mac=<hex64>]` or `ERR IDENTIFY reason=timeout\|cancelled\|sensor\|busy` | ring breathes `prompt` (default blue) while waiting. Each failed attempt emits `EVT NOMATCH` and flashes red, then keeps waiting. `mac` = HMAC-SHA256(device_key, "IDENTIFY\|nonce\|slot") when a nonce was given. |
@@ -33,6 +33,10 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | `PIV ON` / `PIV OFF` | `OK PIV enabled=yes\|no` | persisted, off by default. Off, the reader reports an empty slot. Followed by a USB re-enumeration. |
 | `PIV GENKEY` / `PIV RESET` | `OK PIV identity=yes\|no` or `ERR PIV reason=exists\|timeout\|cancelled\|sensor\|failed` | long-running, after a fingerprint match. GENKEY makes the P-256 keys and certificates on the device; RESET destroys them and restores the default PIN. Either is followed by a USB re-enumeration so the host re-reads the card. |
 | `REBOOT` | `OK REBOOT` | |
+| `FW BEGIN size=<n> sha256=<hex64>` | `OK FW state=writing next=0` or `ERR FW reason=timeout\|cancelled\|sensor\|busy\|layout\|size\|sha256\|begin` | long-running: waits for a fingerprint with the ring breathing white, then erases the spare slot (ADR-0018). |
+| `FW WRITE off=<n> data=<base64>` | `OK FW next=<n>` or `ERR FW reason=offset\|data\|write\|inactive` | up to 168 bytes per line, in order. Any error aborts the update. |
+| `FW END` | `OK FW state=installed restart=yes`, then the device restarts | checks length, SHA-256 and the image, and switches the boot slot. The new image is on probation until the host link has been up for 15 seconds; a crash before that boots the previous slot. |
+| `FW ABORT` | `OK FW state=aborted` | |
 | `BOOTLOADER` | `ERR BOOTLOADER reason=unsupported` | reserved. Meant to reboot into ROM download mode; neither known sequence works on this board yet, and a failed attempt kills the USB link until a power cycle, so it is compiled out. |
 | `GPIO` | `OK GPIO 3=0 4=1 5=0 ...` | levels of the unused XIAO pins, for confirming where a wire landed. |
 | `SELFTEST` | `OK SELFTEST` or `ERR SELFTEST reason=hmac` | signs the vector compiled in from `docs/protocol-vectors.json` and compares. Proves this firmware's HMAC agrees with the Mac side. |
@@ -105,6 +109,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
 | `piv status\|on\|off\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
+| `fw begin\|write\|end\|abort [key=value ...]` | as device; `begin` is a long command |
 | `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled` |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, focus, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |

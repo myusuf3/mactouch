@@ -56,6 +56,26 @@ Check with `idf.py --version`; it should print `ESP-IDF v5.5.x`.
 Optional: `jq` for the AI-agent hooks, `ffmpeg` if you want to exercise the
 microphone and camera monitors from the command line.
 
+## Update the firmware over the link
+
+A board already running mactouch firmware 0.2.0 or later takes new firmware
+over its USB link, with no BOOT button:
+
+```
+scripts/update.sh                    # build and install
+mactouch firmware update IMAGE       # install a given image
+mactouch firmware update             # install the one MacTouch.app carries
+```
+
+The board asks for a fingerprint with the ring breathing white, writes the
+spare of its two app slots, checks the SHA-256 and the image, and restarts
+into it. The new image is on probation until the link has been up for
+fifteen seconds; if it crashes first, the bootloader returns to the previous
+slot, and the CLI reports the rollback. `idf.py -B build-crash
+-DMACTOUCH_CRASH_TEST=1 build` makes an image that crashes on purpose, for
+checking that. The flash procedure below is for a board still on the
+single-slot layout, a blank one, or one whose firmware cannot run.
+
 ## Build and flash the firmware
 
 ```

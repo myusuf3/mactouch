@@ -18,6 +18,8 @@
   commands, tap and hold gestures mapped to Shortcuts, per-finger actions, Calendar countdowns, an SSH agent
   with touch-to-sign. PAM cannot reach the lock screen; see ADR-0012.
 
-Known limitation: entering download mode from software does not work on this
-board revision, so every reflash needs the BOOT button.
+Entering download mode from software still does not work on this board
+revision, but it no longer matters day to day: firmware installs over the
+link after a touch, with rollback (ADR-0018). The BOOT button is for
+recovering a board whose firmware cannot run at all.
 
