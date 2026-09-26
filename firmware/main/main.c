@@ -1,5 +1,7 @@
 #include "esp_err.h"
 #include "esp_ota_ops.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs_flash.h"
 
 #include "ccid.h"
@@ -27,7 +29,11 @@ void app_main(void) {
   usb_init();
   link_init();
   touch_init();
-  // Harmless with a plain factory layout. When this image was delivered by
-  // another firmware's OTA into a rollback-enabled slot, it keeps us booted.
-  (void)esp_ota_mark_app_valid_cancel_rollback();
+#ifdef MACTOUCH_CRASH_TEST
+  vTaskDelay(pdMS_TO_TICKS(5000));
+  abort();
+#endif
+  // A freshly updated image stays on probation until the link task has seen
+  // the host connected for a while (fw_mark_valid); a crash before then
+  // sends the next boot back to the previous slot (ADR-0018).
 }

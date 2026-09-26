@@ -22,6 +22,7 @@
 #include "mbedtls/md.h"
 #include "tusb.h"
 
+#include "fw_update.h"
 #include "led.h"
 #include "piv.h"
 #include "presence.h"
@@ -35,7 +36,7 @@
 #define IDENTIFY_DEFAULT_MS 15000
 #define IDENTIFY_MAX_MS 120000
 
-typedef enum { JOB_IDENTIFY, JOB_ENROLL, JOB_PAIR, JOB_PIV_GENKEY, JOB_PIV_RESET } job_kind_t;
+typedef enum { JOB_IDENTIFY, JOB_ENROLL, JOB_PAIR, JOB_PIV_GENKEY, JOB_PIV_RESET, JOB_FW_BEGIN } job_kind_t;
 typedef struct {
   job_kind_t kind;
   char args[LINK_LINE_MAX];
@@ -236,6 +237,31 @@ static void run_piv(bool reset) {
   usb_rescan(700);
 }
 
+// FW BEGIN: new firmware can read everything the chip holds, so it takes a
+// touch before anything is erased (ADR-0018).
+static void run_fw_begin(const char *args) {
+  char size_text[16], digest[80];
+  uint32_t size;
+  if (!arg(args, "size", size_text, sizeof(size_text)) || !parse_u32(size_text, 0x800000, &size)) {
+    finish("ERR FW reason=size");
+    return;
+  }
+  if (!arg(args, "sha256", digest, sizeof(digest))) { finish("ERR FW reason=sha256"); return; }
+  const char *reason;
+  if (!presence_confirm(30000, LED_WHITE, NULL, &reason)) {
+    led_idle();
+    finish("ERR FW reason=%s", reason);
+    return;
+  }
+  led_set(LED_MODE_BREATHE, LED_CYAN, LED_CYAN, 0);
+  if (!fw_update_begin(size, digest, &reason)) {
+    led_idle();
+    finish("ERR FW reason=%s", reason);
+    return;
+  }
+  finish("OK FW state=writing next=0");
+}
+
 static void run_identify(const char *args, bool pair) {
   const char *verb = pair ? "PAIR" : "IDENTIFY";
   char value[64];
@@ -367,6 +393,7 @@ static void worker_task(void *arg_) {
       case JOB_ENROLL: run_enroll(job.args); break;
       case JOB_PIV_GENKEY: run_piv(false); break;
       case JOB_PIV_RESET: run_piv(true); break;
+      case JOB_FW_BEGIN: run_fw_begin(job.args); break;
     }
     busy = false;
     if (final_reply[0]) link_send("%s", final_reply);
@@ -392,13 +419,14 @@ static void status(void) {
   int count = zw101_count();
   char ring[32];
   led_describe(ring, sizeof(ring));
-  link_send("OK STATUS fw=%s proto=%d sensor=%s prints=%d touch=%s finger=%d watch=%s idle=%s ring=%s piv=%s",
+  link_send("OK STATUS fw=%s proto=%d sensor=%s prints=%d touch=%s finger=%d watch=%s idle=%s ring=%s piv=%s slot=%s%s",
             MACTOUCH_FW_VERSION, MACTOUCH_PROTOCOL_VERSION,
             count >= 0 ? "ready" : "offline", count,
             settings_touch_source() == TOUCH_SOURCE_PIN ? "pin" : "poll",
             touch_present() ? 1 : 0, touch_watch() ? "on" : "off",
             led_colour_name(led_idle_colour()), ring,
-            !piv_enabled() ? "off" : piv_has_identity() ? "identity" : "none");
+            !piv_enabled() ? "off" : piv_has_identity() ? "identity" : "none",
+            fw_running_slot(), fw_pending_verify() ? " probation=yes" : "");
 }
 
 static void led_command(const char *args) {
@@ -541,6 +569,42 @@ static void handle(char *line) {
     } else {
       link_send("ERR PIV reason=unknown");
     }
+  } else if (strcmp(line, "FW") == 0) {
+    char sub[8], value[16];
+    uint32_t offset;
+    token(args, 0, sub, sizeof(sub));
+    const char *reason;
+    if (strcmp(sub, "BEGIN") == 0) {
+      if (fw_update_active()) fw_update_abort();
+      submit(JOB_FW_BEGIN, "FW", args);
+    } else if (strcmp(sub, "WRITE") == 0) {
+      char data[LINK_LINE_MAX];
+      if (!arg(args, "off", value, sizeof(value)) || !parse_u32(value, 0x800000, &offset) ||
+          !arg(args, "data", data, sizeof(data))) {
+        link_send("ERR FW reason=args");
+      } else if (fw_update_write(offset, data, &reason)) {
+        link_send("OK FW next=%u", (unsigned)fw_update_written());
+      } else {
+        led_idle();
+        link_send("ERR FW reason=%s", reason);
+      }
+    } else if (strcmp(sub, "END") == 0) {
+      if (fw_update_end(&reason)) {
+        link_send("OK FW state=installed restart=yes");
+        led_result(true);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        esp_restart();
+      } else {
+        led_result(false);
+        link_send("ERR FW reason=%s", reason);
+      }
+    } else if (strcmp(sub, "ABORT") == 0) {
+      fw_update_abort();
+      led_idle();
+      link_send("OK FW state=aborted");
+    } else {
+      link_send("ERR FW reason=unknown");
+    }
   } else if (strcmp(line, "CANCEL") == 0) {
     cancel_requested = true;
     link_send("OK CANCEL");
@@ -594,6 +658,12 @@ static void console_task(void *arg_) {
     }
 
     bool connected = tud_cdc_connected();
+    static TickType_t connected_since;
+    if (connected && !was_connected) connected_since = now;
+    if (connected && connected_since && now - connected_since > pdMS_TO_TICKS(15000)) {
+      fw_mark_valid();
+      connected_since = 0;
+    }
     if (connected && !was_connected) {
       vTaskDelay(pdMS_TO_TICKS(50));
       link_send("EVT READY fw=%s proto=%d", MACTOUCH_FW_VERSION, MACTOUCH_PROTOCOL_VERSION);

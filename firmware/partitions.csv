@@ -1,8 +1,11 @@
-# Name,     Type, SubType,  Offset,  Size,  Flags
-# The layout single_app_large gives, plus the key partition NVS encryption
-# needs. That partition is flash-encrypted; NVS itself is encrypted with the
-# keys inside it, so the PIV keys and the device key are never plain in flash.
-nvs,        data, nvs,      ,        24K,
-phy_init,   data, phy,      ,        4K,
-factory,    app,  factory,  0x10000, 1500K,
-nvs_key,    data, nvs_keys, ,        4K,   encrypted
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# Two app slots with rollback (ADR-0018). nvs at 0x9000 and nvs_key at
+# 0x187000 are where the single-slot layout had them: moving either would
+# make the encrypted NVS unreadable and cost the device key, the smart card
+# identity and its pairing. otadata and the slots fit around them.
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xf000,   0x1000,
+ota_0,      app,  ota_0,    0x10000,  0x170000,
+otadata,    data, ota,      0x180000, 0x2000,
+nvs_key,    data, nvs_keys, 0x187000, 0x1000,   encrypted
+ota_1,      app,  ota_1,    0x190000, 0x170000,

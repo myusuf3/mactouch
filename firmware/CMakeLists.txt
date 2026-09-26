@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(MACTOUCH_VERSION "0.1.1")
+set(MACTOUCH_VERSION "0.2.1")
+# A rollback test image names itself so it cannot pass for a real release.
+if(MACTOUCH_CRASH_TEST)
+  string(APPEND MACTOUCH_VERSION "-crash")
+endif()
 set(PROJECT_VER "${MACTOUCH_VERSION}")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

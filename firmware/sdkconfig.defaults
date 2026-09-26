@@ -30,3 +30,8 @@ CONFIG_NVS_ENCRYPTION=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+
+# A new image boots once on probation and marks itself valid after the host
+# link has been healthy for a while; a crash before that returns the board to
+# the previous slot (ADR-0018).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
