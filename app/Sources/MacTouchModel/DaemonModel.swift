@@ -33,6 +33,16 @@ public final class DaemonModel: ObservableObject {
     }
   }
 
+  /// A firmware update driven from the app, ADR-0018.
+  public enum FirmwareProgress: Equatable {
+    case waitingForTouch
+    case writing(fraction: Double)
+    case installing
+    case confirming
+    case done(version: String)
+    case failed(String)
+  }
+
   /// A fingerprint request in flight on the daemon.
   public struct Request: Equatable {
     /// `plain` for an ordinary identify, `nonce` for one carrying a nonce,
@@ -69,6 +79,23 @@ public final class DaemonModel: ObservableObject {
   /// the others: "genkey", "reset", "pair" or "unpair".
   @Published public private(set) var smartCardAction: String?
   @Published public private(set) var smartCardError: String?
+  /// The board's firmware version and the slot it runs from.
+  @Published public private(set) var firmware: String?
+  @Published public private(set) var slot: String?
+  @Published public private(set) var firmwareProgress: FirmwareProgress?
+  /// The image this copy of the app installs, from its bundle.
+  public let bundledFirmware: FirmwareImage?
+
+  public var firmwareUpdateAvailable: Bool {
+    guard deviceConnected, let board = firmware, let carried = bundledFirmware?.version else { return false }
+    return firmwareVersion(board, isOlderThan: carried)
+  }
+  public var firmwareUpdating: Bool {
+    switch firmwareProgress {
+    case .waitingForTouch?, .writing?, .installing?, .confirming?: return true
+    default: return false
+    }
+  }
 
   public var notifyActive: Bool { layers.contains("notify") }
 
@@ -96,9 +123,11 @@ public final class DaemonModel: ObservableObject {
   private static let namesKey = "slotNames"
   private let requests = DispatchQueue(label: "mactouch.requests")
 
-  public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard) {
+  public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
+              bundledFirmware: FirmwareImage? = nil) {
     self.path = path
     self.defaults = defaults
+    self.bundledFirmware = bundledFirmware
     let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
     names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
     let thread = Thread { [weak self] in self?.streamEvents() }
@@ -184,6 +213,59 @@ public final class DaemonModel: ObservableObject {
       let report = HealthReport.viaDaemon(at: path)
       publish { $0.health = report }
     }
+  }
+
+  // MARK: firmware
+
+  /// Installs the image the app carries over the link. The board asks for a
+  /// finger first, shown in the request panel, and restarts into the image.
+  public func updateFirmware() {
+    guard !firmwareUpdating, let image = bundledFirmware else { return }
+    firmwareProgress = .waitingForTouch
+    request = Request(kind: "firmware", reason: "Install firmware \(image.version ?? "update")")
+    requests.async { [weak self] in
+      guard let self else { return }
+      let outcome: FirmwareProgress
+      do {
+        let client = try ControlClient(path: path)
+        defer { client.close() }
+        let updater = FirmwareUpdater(image: image) { step, timeout in
+          try client.request(.firmware(step), timeout: timeout)
+        }
+        try updater.run { step in
+          self.publish { model in
+            switch step {
+            case .waitingForTouch: model.firmwareProgress = .waitingForTouch
+            case .writing(let done, let total):
+              model.request = nil
+              model.firmwareProgress = .writing(fraction: Double(done) / Double(total))
+            case .installing: model.firmwareProgress = .installing
+            }
+          }
+        }
+        publish { $0.firmwareProgress = .confirming }
+        switch FirmwareUpdater.awaitOutcome(for: image, status: { self.boardStatus() }) {
+        case .confirmed(let version, _): outcome = .done(version: version)
+        case .rolledBack(let version): outcome = .failed("The new firmware failed and the board went back to \(version ?? "the old one").")
+        case .notBack: outcome = .failed("The board did not come back. Replug it; if it stays away, it needs recovery.")
+        case .stillOnProbation: outcome = .failed("The new firmware has not confirmed itself yet.")
+        }
+      } catch {
+        outcome = .failed(describe(error))
+      }
+      publish { model in
+        model.request = nil
+        model.firmwareProgress = outcome
+      }
+      refreshStatus()
+    }
+  }
+
+  private func boardStatus() -> Fields? {
+    guard let client = try? ControlClient(path: path) else { return nil }
+    defer { client.close() }
+    guard let status = try? client.request(ControlRequest(verb: "status")), status["device"] == "connected" else { return nil }
+    return status
   }
 
   // MARK: smart card
@@ -385,6 +467,8 @@ public final class DaemonModel: ObservableObject {
         model.prints = nil
       }
       if let sensor = status["sensor"] { model.sensor = sensor }
+      if let firmware = status["fw"] { model.firmware = firmware }
+      if let slot = status["slot"] { model.slot = slot }
       if let prints = status.int("prints") { model.prints = prints }
     }
   }

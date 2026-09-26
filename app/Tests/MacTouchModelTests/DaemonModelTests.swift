@@ -16,8 +16,8 @@ private final class Received: @unchecked Sendable {
 }
 
 @MainActor
-private func waitUntil(_ condition: @escaping () -> Bool) async throws {
-  let deadline = Date().addingTimeInterval(5)
+private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> Bool) async throws {
+  let deadline = Date().addingTimeInterval(seconds)
   while !condition() {
     try #require(Date() < deadline, "condition not met in time")
     try await Task.sleep(nanoseconds: 20_000_000)
@@ -180,5 +180,58 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     try await waitUntil { model.request?.kind == "piv" }
     server.broadcast(ControlLine.evt("piv", [("state", "done"), ("result", "match")]))
     try await waitUntil { model.request == nil }
+  }
+
+  @Test(.timeLimit(.minutes(1))) @MainActor func updatesFirmwareFromTheBundledImage() async throws {
+    var bytes = [UInt8](repeating: 0, count: 400)
+    bytes[0] = 0xE9
+    bytes.replaceSubrange(0x20..<0x24, with: [0x32, 0x54, 0xCD, 0xAB])
+    bytes.replaceSubrange(0x30..<0x35, with: Array("0.3.0".utf8))
+    bytes.replaceSubrange(0x50..<0x58, with: Array("mactouch".utf8))
+    let image = FirmwareImage(data: Data(bytes))
+
+    let received = Received()
+    let installed = Received()
+    let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-fw-\(UUID().uuidString.prefix(8)).sock")
+    var written = 0
+    server.handler = { request, connection in
+      switch request.verb {
+      case "events": connection.subscribed = true; connection.send(ControlLine.evt("device", [("state", "connected")]))
+      case "hello": connection.send(ControlLine.ok("hello"))
+      case "status":
+        let version = installed.all.isEmpty ? "0.2.1" : "0.3.0"
+        connection.send(ControlLine.ok("status", [("device", "connected"), ("fw", version), ("slot", "ota_1")]))
+      case "fw":
+        received.append(request.positional.first ?? "?")
+        switch request.positional.first {
+        case "write":
+          written += Data(base64Encoded: request["data"] ?? "")?.count ?? 0
+          connection.send(ControlLine.ok("fw", [("next", "\(written)")]))
+        case "end":
+          installed.append("yes")
+          connection.send(ControlLine.ok("fw", [("state", "installed")]))
+        default: connection.send(ControlLine.ok("fw", [("state", "writing"), ("next", "0")]))
+        }
+      default: connection.send(ControlLine.ok(request.verb))
+      }
+    }
+    try server.start()
+    defer { server.stop() }
+
+    let model = DaemonModel(path: server.path, bundledFirmware: image)
+    try await waitUntil { model.firmware == "0.2.1" }
+    #expect(model.firmwareUpdateAvailable)
+    model.updateFirmware()
+    #expect(model.request?.kind == "firmware")
+    try await waitUntil(seconds: 20) {
+      if case .failed? = model.firmwareProgress { return true }
+      return model.firmwareProgress == .done(version: "0.3.0")
+    }
+    #expect(model.firmwareProgress == .done(version: "0.3.0"))
+    #expect(received.all.first == "begin" && received.all.last == "end")
+    #expect(written == 400)
+    #expect(model.request == nil)
+    try await waitUntil { model.firmware == "0.3.0" }
+    #expect(!model.firmwareUpdateAvailable)
   }
 }
