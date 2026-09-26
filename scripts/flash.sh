@@ -35,10 +35,22 @@ esptool.py --chip esp32s3 --port "$port" --before default_reset --after no_reset
 # Once the bootloader has enabled flash encryption (SPI_BOOT_CRYPT_CNT set),
 # plain writes would leave unreadable garbage; the ROM encrypts on the way in
 # when asked. Before that first boot the plain write is what enables it.
+# A wrong guess either way leaves an unbootable board, so an unreadable
+# eFuse stops the flash instead of defaulting to one.
+crypt=$(espefuse.py --chip esp32s3 --port "$port" --before no_reset summary 2>/dev/null | grep -E "^SPI_BOOT_CRYPT_CNT" || true)
+[[ -n "$crypt" ]] || { print -u2 "Cannot read SPI_BOOT_CRYPT_CNT from the eFuses; not flashing."; exit 1 }
+print "eFuse: ${crypt//  / }"
 encrypt=()
-if espefuse.py --chip esp32s3 --port "$port" --before no_reset summary 2>/dev/null | grep -E "^SPI_BOOT_CRYPT_CNT" | grep -qE "0b0*1|= [1-7] "; then
+# An odd number of bits set in the 3-bit counter means encryption is on.
+bits=$(print -r -- "$crypt" | grep -oE "0b[01]{3}" | head -1)
+ones=$(print -r -- "${bits#0b}" | tr -cd 1 | wc -c | tr -d " ")
+if [[ -z "$bits" ]]; then
+  print -u2 "Cannot parse SPI_BOOT_CRYPT_CNT ($crypt); not flashing."; exit 1
+elif (( ones % 2 == 1 )); then
   encrypt=(--encrypt)
   print "Flash encryption is on; writing encrypted."
+else
+  print "Flash encryption is off; writing plain."
 fi
 
 if $backup_wanted; then
