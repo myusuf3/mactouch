@@ -101,6 +101,55 @@ public struct FirmwareUpdater {
   }
 }
 
+extension ControlRequest {
+  /// An updater step as the daemon's `fw` verb: `WRITE off=0 data=…` becomes
+  /// `fw write off=0 data=…`.
+  public static func firmware(_ step: String) -> ControlRequest {
+    let words = step.split(separator: " ").map(String.init)
+    var request = ControlRequest(verb: "fw", positional: [words[0].lowercased()])
+    for word in words.dropFirst() {
+      guard let eq = word.firstIndex(of: "=") else { continue }
+      request.values[String(word[..<eq])] = String(word[word.index(after: eq)...])
+    }
+    return request
+  }
+}
+
+/// How an update ended, judged from the board once it is back.
+public enum FirmwareOutcome: Equatable, Sendable {
+  case confirmed(version: String, slot: String)
+  case rolledBack(to: String?)
+  case notBack
+  case stillOnProbation
+}
+
+extension FirmwareUpdater {
+  /// Waits for the board to come back and settle. A new image is on
+  /// probation until it has run healthily for a while, and a crash in that
+  /// time rolls the board back, so only the end of probation says the
+  /// update took; seeing the new version once does not. `status` returns
+  /// the board's status, or nil while it is away or has not answered yet.
+  public static func awaitOutcome(for image: FirmwareImage, status: () -> Fields?,
+                                  onProbation: () -> Void = {}, timeout: TimeInterval = 90) -> FirmwareOutcome {
+    let deadline = Date().addingTimeInterval(timeout)
+    var seenAtAll = false
+    var toldProbation = false
+    Thread.sleep(forTimeInterval: 2)
+    while Date() < deadline {
+      guard let back = status(), let version = back["fw"] else {
+        Thread.sleep(forTimeInterval: 1)
+        continue
+      }
+      seenAtAll = true
+      if version != image.version { return .rolledBack(to: version) }
+      if back["probation"] != "yes" { return .confirmed(version: version, slot: back["slot"] ?? "?") }
+      if !toldProbation { onProbation(); toldProbation = true }
+      Thread.sleep(forTimeInterval: 2)
+    }
+    return seenAtAll ? .stillOnProbation : .notBack
+  }
+}
+
 public enum FirmwareError: Error, CustomStringConvertible {
   case notMactouch
   case outOfStep(expected: Int, got: Int?)

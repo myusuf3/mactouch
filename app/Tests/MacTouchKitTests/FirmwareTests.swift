@@ -74,4 +74,31 @@ import Testing
     #expect(throws: FirmwareError.self) { try updater.run() }
     #expect(lines.last == "ABORT")
   }
+
+  /// Replays a board's answers, one per poll; nil is "away".
+  private func replay(_ answers: [Fields?]) -> () -> Fields? {
+    var queue = answers
+    return { queue.isEmpty ? answers.last! : queue.removeFirst() }
+  }
+
+  @Test(.timeLimit(.minutes(1))) func outcomeWaitsForProbationToEnd() {
+    let firmware = image(version: "0.2.2")
+    let outcome = FirmwareUpdater.awaitOutcome(for: firmware, status: replay([
+      nil,
+      Fields(values: ["device": "connected"]),
+      Fields(values: ["fw": "0.2.2", "slot": "ota_0", "probation": "yes"]),
+      Fields(values: ["fw": "0.2.2", "slot": "ota_0"]),
+    ]), timeout: 30)
+    #expect(outcome == .confirmed(version: "0.2.2", slot: "ota_0"))
+  }
+
+  @Test(.timeLimit(.minutes(1))) func outcomeSeesARollbackAfterAMomentOnTheNewImage() {
+    let firmware = image(version: "0.2.2-crash")
+    let outcome = FirmwareUpdater.awaitOutcome(for: firmware, status: replay([
+      Fields(values: ["fw": "0.2.2-crash", "slot": "ota_0", "probation": "yes"]),
+      nil,
+      Fields(values: ["fw": "0.2.1", "slot": "ota_1"]),
+    ]), timeout: 30)
+    #expect(outcome == .rolledBack(to: "0.2.1"))
+  }
 }
