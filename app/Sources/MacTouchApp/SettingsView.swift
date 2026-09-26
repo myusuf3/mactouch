@@ -52,6 +52,7 @@ struct GeneralPane: View {
           Text(error).foregroundStyle(.red)
         }
       }
+      FirmwareSection(model: model)
       Section {
         Toggle("Show in menu bar", isOn: $showInMenuBar)
       } footer: {
@@ -68,6 +69,57 @@ struct GeneralPane: View {
 
   private var launchAtLogin: Binding<Bool> {
     Binding(get: { loginItem.isEnabled }, set: { loginItem.set(enabled: $0) })
+  }
+}
+
+/// The board's firmware against the image this app carries, and the update
+/// over the link (ADR-0018).
+struct FirmwareSection: View {
+  @ObservedObject var model: DaemonModel
+
+  var body: some View {
+    Section {
+      LabeledContent("Board", value: board)
+      LabeledContent("MacTouch carries", value: model.bundledFirmware?.version ?? "none")
+      if let progress = model.firmwareProgress {
+        switch progress {
+        case .writing(let fraction): ProgressView("Writing firmware…", value: fraction)
+        default: Text(text(progress)).foregroundStyle(color(progress))
+        }
+      }
+      if model.firmwareUpdateAvailable || model.firmwareUpdating {
+        Button("Update Firmware") { model.updateFirmware() }
+          .disabled(model.firmwareUpdating)
+      }
+    } header: {
+      Text("Firmware")
+    } footer: {
+      Text("Updates install over USB after a touch. If new firmware fails, the board returns to the old one on its own.")
+    }
+  }
+
+  private var board: String {
+    guard model.deviceConnected, let firmware = model.firmware else { return "not connected" }
+    return model.slot.map { "\(firmware) (\($0))" } ?? firmware
+  }
+
+  private func text(_ progress: DaemonModel.FirmwareProgress) -> String {
+    switch progress {
+    case .waitingForTouch: return "Touch the sensor to allow the update"
+    case .writing: return "Writing firmware…"
+    case .installing: return "Checking and installing; the board restarts"
+    case .confirming: return "Waiting for the new firmware to confirm itself…"
+    case .done(let version): return "Updated to \(version)"
+    case .failed(let reason): return reason
+    }
+  }
+
+  private func color(_ progress: DaemonModel.FirmwareProgress) -> Color {
+    switch progress {
+    case .done: return .green
+    case .failed: return .red
+    default: return .secondary
+    }
   }
 }
 

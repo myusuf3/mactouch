@@ -72,7 +72,7 @@ struct RequestView: View {
       Spacer(minLength: 12)
       // The card cannot be interrupted once it waits; the host gives up
       // on its own when the wait ends.
-      if model.request?.kind != "piv" {
+      if model.request?.kind == "plain" || model.request?.kind == "nonce" {
         Button("Cancel") { model.cancel() }
       }
     }
@@ -85,6 +85,7 @@ struct RequestView: View {
     switch model.request?.kind {
     case "nonce": return "Authentication request"
     case "piv": return "Smart card sign-in"
+    case "firmware": return "Firmware update"
     default: return "Fingerprint requested"
     }
   }

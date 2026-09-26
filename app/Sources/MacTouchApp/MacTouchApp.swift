@@ -17,7 +17,9 @@ struct MacTouchApp: App {
   private let requestPanel: RequestPanel
 
   init() {
-    let model = DaemonModel()
+    let image = Bundle.main.url(forResource: "mactouch", withExtension: "bin", subdirectory: "firmware")
+      .flatMap { try? FirmwareImage(contentsOf: $0) }
+    let model = DaemonModel(bundledFirmware: image?.isMactouch == true ? image : nil)
     _model = StateObject(wrappedValue: model)
     let agent = DaemonAgent()
     _agent = StateObject(wrappedValue: agent)
@@ -81,6 +83,11 @@ struct StatusMenu: View {
       }
       if model.notifyActive {
         Button("Clear Notify Layer") { model.clearNotify() }
+      }
+      if model.firmwareUpdating {
+        Text("Updating firmware…")
+      } else if model.firmwareUpdateAvailable, let version = model.bundledFirmware?.version {
+        Button("Update Firmware to \(version)") { model.updateFirmware() }
       }
       Divider()
     }
