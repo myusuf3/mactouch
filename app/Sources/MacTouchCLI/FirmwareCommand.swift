@@ -31,15 +31,7 @@ func runFirmware(_ args: [String], direct: Bool, port: String?) throws -> Int32 
   if sub == "version" { return 0 }
 
   let updater = FirmwareUpdater(image: image) { step, timeout in
-    if let client {
-      let words = step.split(separator: " ").map(String.init)
-      var request = ControlRequest(verb: "fw", positional: [words[0].lowercased()])
-      for word in words.dropFirst() {
-        guard let eq = word.firstIndex(of: "=") else { continue }
-        request.values[String(word[..<eq])] = String(word[word.index(after: eq)...])
-      }
-      return try client.request(request, timeout: timeout)
-    }
+    if let client { return try client.request(.firmware(step), timeout: timeout) }
     return try device!.request(.fw(step), timeout: timeout)
   }
   var lastPercent = -1
@@ -55,46 +47,32 @@ func runFirmware(_ args: [String], direct: Bool, port: String?) throws -> Int32 
   client?.close()
   device?.close()
   print("waiting for the board to restart")
-  // A new image is on probation until it has run healthily for a while, and
-  // a crash in that time rolls the board back. Only the end of probation
-  // says the update took; seeing the new version once does not.
-  let deadline = Date().addingTimeInterval(90)
-  var seenNew = false
-  while Date() < deadline {
-    guard let back = waitForBoard(timeout: 40, direct: !viaDaemon, port: port) else {
-      throw fail("the board did not come back within 40 seconds; if it stays away, scripts/flash.sh recovers it")
-    }
-    if back["fw"] != image.version {
-      throw fail("the board is back on \(back["fw"] ?? "unknown") in \(back["slot"] ?? "?"): the new image failed and it rolled back")
-    }
-    if back["probation"] != "yes" {
-      print("running \(back["fw"]!) from \(back["slot"] ?? "?"), confirmed")
-      return 0
-    }
-    if !seenNew { print("running \(back["fw"]!) on probation; waiting for it to confirm itself"); seenNew = true }
-    Thread.sleep(forTimeInterval: 2)
+  let outcome = FirmwareUpdater.awaitOutcome(for: image, status: { boardStatus(direct: !viaDaemon, port: port) },
+                                             onProbation: { print("running \(image.version ?? "it") on probation; waiting for it to confirm itself") })
+  switch outcome {
+  case .confirmed(let version, let slot):
+    print("running \(version) from \(slot), confirmed")
+    return 0
+  case .rolledBack(let version):
+    throw fail("the board is back on \(version ?? "unknown"): the new image failed and it rolled back")
+  case .notBack:
+    throw fail("the board did not come back; if it stays away, scripts/flash.sh recovers it")
+  case .stillOnProbation:
+    throw fail("the new image is still on probation after 90 seconds; check mactouch status")
   }
-  throw fail("the new image is still on probation after 90 seconds; check mactouch status")
 }
 
-/// Polls until the board answers status again after its restart.
-private func waitForBoard(timeout: TimeInterval, direct: Bool, port: String?) -> Fields? {
-  let deadline = Date().addingTimeInterval(timeout)
-  Thread.sleep(forTimeInterval: 2)
-  while Date() < deadline {
-    if direct {
-      if let device = try? openDevice(port) {
-        defer { device.close() }
-        if let status = try? device.request(.status), status["fw"] != nil { return status }
-      }
-    } else if let client = try? ControlClient() {
-      defer { client.close() }
-      // Right after a reconnect the daemon knows the board is there before
-      // it has asked it anything; a status without a version is not an answer.
-      if let status = try? client.request(ControlRequest(verb: "status")), status["device"] == "connected",
-         status["fw"] != nil { return status }
-    }
-    Thread.sleep(forTimeInterval: 1)
+/// The board's status once, or nil while it is away. Right after a
+/// reconnect the daemon knows the board is there before it has asked it
+/// anything, so a status without a version is treated as no answer.
+private func boardStatus(direct: Bool, port: String?) -> Fields? {
+  if direct {
+    guard let device = try? openDevice(port) else { return nil }
+    defer { device.close() }
+    return try? device.request(.status)
   }
-  return nil
+  guard let client = try? ControlClient() else { return nil }
+  defer { client.close() }
+  guard let status = try? client.request(ControlRequest(verb: "status")), status["device"] == "connected" else { return nil }
+  return status
 }
