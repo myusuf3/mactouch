@@ -32,6 +32,12 @@ mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Helpers" "$stage/Contents/Libr
 install -m 755 .build/release/MacTouchApp "$stage/Contents/MacOS/MacTouch"
 install -m 755 .build/release/mactouchd "$stage/Contents/MacOS/mactouchd"
 install -m 755 .build/release/mactouch "$stage/Contents/Helpers/mactouch"
+# The firmware this release installs over the link (ADR-0018), when built.
+firmware="$here/../firmware/build/mactouch.bin"
+if [[ -f "$firmware" ]]; then
+  mkdir -p "$stage/Contents/Resources/firmware"
+  install -m 644 "$firmware" "$stage/Contents/Resources/firmware/mactouch.bin"
+fi
 cat > "$stage/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
