@@ -29,6 +29,9 @@ public enum Command: Equatable, Sendable {
   case pair(timeoutMs: Int = 30000)
   /// `STATUS`, `GENKEY` or `RESET`; the last two wait for a finger.
   case piv(String)
+  /// A firmware update step, `BEGIN size=… sha256=…`, `WRITE off=… data=…`,
+  /// `END` or `ABORT` (ADR-0018). BEGIN waits for a finger.
+  case fw(String)
   case gpio
   case selftest
   case cancel
@@ -49,6 +52,7 @@ public enum Command: Equatable, Sendable {
     case .touch: return "TOUCH"
     case .pair: return "PAIR"
     case .piv: return "PIV"
+    case .fw: return "FW"
     case .gpio: return "GPIO"
     case .selftest: return "SELFTEST"
     case .cancel: return "CANCEL"
@@ -82,6 +86,7 @@ public enum Command: Equatable, Sendable {
     case .touch(let source): return "TOUCH \(source.rawValue)"
     case .pair(let timeoutMs): return "PAIR timeout=\(timeoutMs)"
     case .piv(let sub): return "PIV \(sub)"
+    case .fw(let step): return "FW \(step)"
     default: return verb
     }
   }
