@@ -43,7 +43,11 @@ Each step ships on its own and is verified on hardware.
 2. **Firmware in the app.** The bundle carries the firmware image and its
    version; the app offers an update when the board is older, with progress
    and the touch prompt in the request panel. Verify: bump the version,
-   rebuild the app, and update the board from Settings.
+   rebuild the app, and update the board from Settings. Done 2026-09-26:
+   "Update Firmware to 0.2.2" appeared in the menu and the Firmware section
+   of Settings → General, the panel asked for the touch, and the board came
+   back on 0.2.2 in the other slot, confirmed, with the smart card and its
+   pairing untouched.
 3. **First install on a blank board.** Vendor esp-serial-flasher as a C
    target with a port over the Kit's serial code; detect a board in ROM
    download mode; flash bootloader, partition table, otadata and app.
