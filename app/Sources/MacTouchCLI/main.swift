@@ -29,6 +29,8 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   piv status|on|off               the smart card for screen unlock (off by default)
   piv genkey|reset                make or destroy its identity; both need a touch
   piv pair|unpair                 pair the card with your account through sc_auth
+  firmware version|update [IMAGE] the board's firmware over the link, after a touch
+                                  (IMAGE defaults to the one MacTouch.app carries)
   gpio                            pin levels, for checking wiring
   selftest                        firmware signs the shared protocol vector
   events                          stream events until interrupted
@@ -241,6 +243,9 @@ setlinebuf(stdout)
 do {
   let options = try parse(Array(CommandLine.arguments.dropFirst()))
   if options.command[0] == "doctor" { exit(runDoctor(direct: options.direct, port: options.port)) }
+  if options.command[0] == "firmware" {
+    exit(try runFirmware(Array(options.command.dropFirst()), direct: options.direct, port: options.port))
+  }
   if options.command == ["piv", "pair"] { exit(try runPIVPair()) }
   if options.command == ["piv", "unpair"] { exit(try runPIVUnpair()) }
   if !options.direct && ControlClient.isAvailable() {

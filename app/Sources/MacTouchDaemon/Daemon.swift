@@ -138,7 +138,7 @@ final class Daemon {
       ]
       if let source = monitors.focusSource { fields.append(("focus", source.rawValue)) }
       if busy == nil, let device = manager.device, let status = try? device.request(.status) {
-        for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv"] {
+        for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv", "slot", "probation"] {
           if let value = status[key] { fields.append((key, value)) }
         }
       }
@@ -217,6 +217,17 @@ final class Daemon {
         passthrough(.piv(sub), verb, connection)
       } else {
         runLong(verb, connection, timeout: 40) { device in try device.request(.piv(sub), timeout: 40) }
+      }
+
+    case "fw":
+      // `fw begin size=… sha256=…` waits for a touch; the rest are quick.
+      guard let sub = request.positional.first?.uppercased(), ["BEGIN", "WRITE", "END", "ABORT"].contains(sub) else { return fail("value") }
+      let args = request.values.keys.sorted().map { "\($0)=\(request.values[$0]!)" }.joined(separator: " ")
+      let step = args.isEmpty ? sub : "\(sub) \(args)"
+      if sub == "BEGIN" {
+        runLong(verb, connection, timeout: 50) { device in try device.request(.fw(step), timeout: 50) }
+      } else {
+        passthrough(.fw(step), verb, connection)
       }
 
     case "delete":
