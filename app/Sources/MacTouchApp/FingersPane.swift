@@ -80,39 +80,46 @@ struct EnrolmentSheet: View {
   @State private var slot: Int?
 
   var body: some View {
-    VStack(spacing: 18) {
-      FingerprintProgress(progress: progress, done: isDone, failed: isFailed)
-        .padding(.top, 8)
-      VStack(spacing: 6) {
-        Text(title)
-          .font(.title3.weight(.semibold))
-        Text(detail)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .frame(minHeight: 36, alignment: .top)
-      }
-      .animation(.smooth, value: title)
-      if isDone {
-        TextField("Name", text: $name, prompt: Text("Name this finger, like Right Index"))
-          .textFieldStyle(.roundedBorder)
-          .frame(width: 260)
-      }
-      HStack {
-        if isFailed {
-          Button("Try Again") { start() }
+    VStack(spacing: 0) {
+      VStack(spacing: 18) {
+        FingerprintProgress(progress: progress, done: isDone, failed: isFailed)
+        VStack(spacing: 6) {
+          Text(title)
+            .font(.title3.weight(.semibold))
+          Text(detail)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(minHeight: 36, alignment: .top)
         }
-        Spacer()
+        .animation(.smooth, value: title)
         if isDone {
-          Button("Done") { save() }
+          TextField("Name", text: $name, prompt: Text("Name this finger, like Right Index"))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 260)
+        }
+      }
+      .padding(.horizontal, 24)
+      .padding(.top, 28)
+      .padding(.bottom, 20)
+      Divider()
+      HStack(spacing: 12) {
+        if isDone {
+          Button { save() } label: { Text("Done").frame(maxWidth: .infinity) }
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
         } else {
-          Button("Cancel", role: .cancel) { cancel() }
+          Button(role: .cancel) { cancel() } label: { Text("Cancel").frame(maxWidth: .infinity) }
             .keyboardShortcut(.cancelAction)
+          if isFailed {
+            Button { start() } label: { Text("Try Again").frame(maxWidth: .infinity) }
+              .keyboardShortcut(.defaultAction)
+          }
         }
       }
+      .controlSize(.large)
+      .padding(16)
     }
-    .padding(24)
     .frame(width: 380)
     .onAppear(perform: start)
   }
@@ -162,7 +169,7 @@ struct EnrolmentSheet: View {
   private var detail: String {
     switch model.enrolment {
     case .done: return "It can approve requests now."
-    case .failed(let reason): return reason == "cancelled" ? "Enrolment was cancelled." : "The sensor said: \(reason)"
+    case .failed(let reason): return reason == "cancelled" ? "Enrolment was cancelled." : reason
     default:
       switch step {
       case "lift": return "Got it. Take your finger off the sensor."
