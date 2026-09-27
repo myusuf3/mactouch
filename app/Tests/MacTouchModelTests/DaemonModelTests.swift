@@ -37,6 +37,7 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "breathe:red"), ("layers", "idle,privacy,notify"),
         ("monitors", "lock,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
+        ("focus", "menubar"),
       ]))
     case "slots":
       connection.send(ControlLine.ok("slots", [("used", "1,3"), ("capacity", "20")]))
@@ -76,6 +77,8 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     #expect(model.deviceConnected)
     #expect(model.sensor == "ready")
     #expect(model.ring == "breathe:red")
+    #expect(model.ringState == RingState(.breathe, .red))
+    #expect(model.focusSource == .menubar)
     #expect(model.layers == ["idle", "privacy", "notify"])
     #expect(model.notifyActive)
     #expect(model.idle == .cyan)

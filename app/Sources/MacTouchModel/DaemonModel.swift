@@ -63,6 +63,9 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var layers: [String] = []
   @Published public private(set) var idle: LEDColour?
   @Published public private(set) var monitors: Set<MonitorName> = []
+  /// Where the Focus monitor reads from; `menubar` is the fallback that
+  /// cannot name the mode, until mactouchd has Full Disk Access.
+  @Published public private(set) var focusSource: FocusMonitor.Source?
 
   @Published public private(set) var slots: [Int] = []
   @Published public private(set) var capacity = 20
@@ -95,6 +98,13 @@ public final class DaemonModel: ObservableObject {
     case .waitingForTouch?, .writing?, .installing?, .confirming?: return true
     default: return false
     }
+  }
+
+  /// `ring` read back into a state, nil when the daemon has not said.
+  public var ringState: RingState? {
+    guard let parts = ring?.split(separator: ":").map(String.init), let mode = parts.first.flatMap(LEDMode.init) else { return nil }
+    let colours = parts.dropFirst().compactMap(LEDColour.init)
+    return RingState(mode, colours.first ?? .off, colours.dropFirst().first)
   }
 
   public var notifyActive: Bool { layers.contains("notify") }
@@ -462,6 +472,7 @@ public final class DaemonModel: ObservableObject {
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
       model.idle = status["idle"].flatMap(LEDColour.init)
       model.monitors = Set(status["monitors"]?.split(separator: ",").compactMap { MonitorName(rawValue: String($0)) } ?? [])
+      model.focusSource = status["focus"].flatMap(FocusMonitor.Source.init)
       if !model.deviceConnected {
         model.sensor = nil
         model.prints = nil
