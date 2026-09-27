@@ -115,7 +115,7 @@ extension RingLayer {
     case .locked: return .off
     case .focus: return RingState(.on, .magenta)
     case .privacy: return RingState(.breathe, .red)
-    case .notify: return RingState(.flash, .yellow)
+    case .notify: return RingState(.breathe, .yellow)
     case .prompt: return RingState(.breathe, .blue)
     }
   }
@@ -126,7 +126,7 @@ extension RingLayer {
     case .locked: return "Dark while your Mac is locked."
     case .focus: return "Steady magenta while a Focus is on."
     case .privacy: return "Breathes red while the microphone or camera is live."
-    case .notify: return "Set by scripts and agents with mactouch notify."
+    case .notify: return "Breathes in the colour a script or agent picks."
     case .prompt: return "Breathes blue when an app asks, white for sudo."
     }
   }

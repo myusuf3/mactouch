@@ -14,7 +14,7 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
                                   mode: off on breathe flash fadein fadeout
                                   colour: off blue green cyan red magenta yellow white
   notify <colour> [--for SECONDS] [--mode MODE]
-                                  temporary ring state via the daemon (default 5s)
+                                  temporary ring state via the daemon (default 5s, breathing)
   clear                           drop the notify layer
   idle <colour>                   the ring's resting colour (persisted on the device)
   identify [--timeout SECONDS] [--prompt COLOUR] [--nonce HEX32] [--reason TEXT]

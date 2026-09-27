@@ -102,7 +102,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | -- | -- |
 | `status` | `ok status proto=1 device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy monitors=lock,focus,mic,camera [focus=assertions\|menubar]` |
 | `led <mode> [<colour>] [<colour2>]` | `ok led` (sets the notify layer with no expiry) |
-| `notify <colour> for=<seconds> [mode=<mode>]` | `ok notify` |
+| `notify <colour> for=<seconds> [mode=<mode>]` | `ok notify` (mode defaults to `breathe`) |
 | `clear` | `ok clear` (drops the notify layer) |
 | `idle <colour>` | `ok idle` |
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |

@@ -161,7 +161,9 @@ final class Daemon {
 
     case "notify":
       guard let name = request.positional.first, let colour = LEDColour(rawValue: name) else { return fail("colour") }
-      let mode = request["mode"].flatMap(LEDMode.init) ?? .on
+      // Breathing by default: a notification should catch the eye without
+      // the urgency of a flash.
+      let mode = request["mode"].flatMap(LEDMode.init) ?? .breathe
       guard let seconds = request.double("for"), seconds > 0 else { return fail("for") }
       policy.set(.notify, RingState(mode, colour), for: seconds)
       applyRing()
