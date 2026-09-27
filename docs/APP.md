@@ -64,36 +64,40 @@ Settings footer says so.
 
 ## Settings window
 
-A `Settings` scene laid out like System Settings: a sidebar with the
-device at the top and coloured icons for the panes, the window title
-following the pane, and the last pane restored, as the HIG asks. Eight
-panes are too many for toolbar tabs.
+A `Settings` scene with a sidebar: General on its own, then the panes
+under three headers, Light, Security and MacTouch. The pane's icon and name
+sit in the title bar instead of a banner, so each pane opens on its
+settings; the window title still follows the pane and the last pane is
+restored, as the HIG asks. Eight panes are too many for toolbar tabs.
+Toggles and selections take the ring's colour, so the window matches the
+sensor, except where the colour has no hue to lend (off, white) or is too
+light for white text (yellow).
 
 The device is drawn, not pictured: `DeviceView` renders the sensor with its
 ring lit from the daemon's `ring` state, breathing and flashing in step
-with the real one (steady under Reduce Motion). It is the sidebar's first
-row, the overview's hero, the swatch preview and the request panel's icon,
-so the screen always matches the desk.
+with the real one (steady under Reduce Motion). It is the General card,
+the About and Firmware heroes, each colour tile and the request panel's
+icon, so the screen always matches the desk.
 
-- **Overview.** The device, a line on its state, and rows into Ring,
-  Fingers and Firmware. Version and credits underneath.
-- **General.** Open at login, show in menu bar. Launch at login is turned
-  on the first time the app runs, because an app whose job is to be there
-  when sudo asks is no use absent; the toggle is the opt-out and the choice
-  is not touched again.
-- **Ring.** The resting colour as lit swatches, and the layer stack from
-  request down to idle, each drawn as it looks, marking the one showing.
-- **Fingers.** The slots from `slots`, a name per slot stored in the app's
-  defaults, delete with confirmation, and enrolment in a sheet that fills a
-  fingerprint as the daemon streams `evt enroll step=...`.
+- **General.** The sensor with its state, then launch at login and show in
+  menu bar. Launch at login is turned on the first time the app runs,
+  because an app whose job is to be there when sudo asks is no use absent;
+  the toggle is the opt-out and the choice is not touched again.
+- **Ring.** The resting colour as tiles, each a small lit sensor, and the
+  layer stack from request down to idle, marking the one showing.
 - **Monitors.** The four toggles with a line each on what they show, and a
   button to the Full Disk Access pane when Focus is on the menu bar
   fallback.
+- **Fingers.** The slots from `slots`, a name per slot stored in the app's
+  defaults, delete with confirmation, and enrolment in a sheet that fills a
+  fingerprint as the daemon streams `evt enroll step=...`.
 - **Smart Card.** Screen unlock through the device's PIV card (docs/PIV.md)
   as three steps ticked off from the card's state: keys, PIN, pairing.
-- **Firmware.** Laid out like Software Update: the board's version against
-  the one the app carries, and the update with its progress.
+- **Firmware.** The sensor, its version in a capsule (`0.2.2 → 0.2.3` when
+  the app carries newer), one Install button with progress, and how
+  updates and rollback work.
 - **Diagnostics.** The same rows as `mactouch doctor`, live.
+- **About.** Version and credits.
 
 Doctor's checks move from the CLI into MacTouchKit as a `HealthReport` so the
 CLI and the app render one list.
