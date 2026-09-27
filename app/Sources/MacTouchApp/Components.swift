@@ -103,8 +103,24 @@ struct Footnote: View {
     Text(text)
       .font(.footnote)
       .foregroundStyle(.secondary)
+      .multilineTextAlignment(.leading)
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .padding(.horizontal, 10)
+  }
+}
+
+/// A version in a monospaced capsule; "0.2.2 → 0.2.3" for an update.
+struct VersionCapsule: View {
+  var text: String
+
+  var body: some View {
+    Text(text)
+      .font(.system(.body, design: .monospaced).weight(.medium))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 6)
+      .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+      .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
   }
 }

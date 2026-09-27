@@ -164,3 +164,19 @@ struct DeviceView: View {
       .padding(size * 0.2)
   }
 }
+
+/// The sensor large, with its light spilling onto what is behind it.
+struct DeviceHero: View {
+  var ring: RingState?
+  var size: CGFloat
+
+  var body: some View {
+    DeviceView(ring: ring, size: size)
+      .background(
+        Circle()
+          .fill((ring?.colour ?? .off).light)
+          .blur(radius: size * 0.35)
+          .opacity(ring == nil || ring?.mode == .off ? 0 : 0.35)
+      )
+  }
+}
