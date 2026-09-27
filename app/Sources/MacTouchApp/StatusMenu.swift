@@ -70,12 +70,12 @@ struct StatusMenu: View {
     return prints == 1 ? "Connected · 1 Finger" : "Connected · \(prints) Fingers"
   }
 
-  /// "Breathing red for Privacy". The owning layer is named unless it is
-  /// the idle colour, which needs no explanation.
+  /// "Privacy · Breathing Red", only while a layer covers the resting
+  /// colour; the dot beside the status line already shows that one.
   private var ringLine: String? {
     guard model.daemonRunning, model.deviceConnected, let ring = model.ringState else { return nil }
-    guard let owner = model.layers.last.flatMap(RingLayer.init(name:)), owner != .idle else { return ring.phrase }
-    return "\(ring.phrase) · \(owner.title)"
+    guard let owner = model.layers.last.flatMap(RingLayer.init(name:)), owner != .idle else { return nil }
+    return "\(owner.title) · \(ring.title)"
   }
 }
 

@@ -60,6 +60,14 @@ extension RingState {
     let colours = colour2 == colour ? colour.rawValue : "\(colour.rawValue) and \(colour2.rawValue)"
     return "\(mode.adjective) \(colours)"
   }
+
+  /// The phrase in title case, for menus: "Breathing Red", "Flashing Blue
+  /// and White".
+  var title: String {
+    guard mode != .off else { return "Off" }
+    let colours = colour2 == colour ? colour.name : "\(colour.name) and \(colour2.name)"
+    return "\(mode.adjective.capitalized) \(colours)"
+  }
 }
 
 /// The sensor on the desk: a dark glass disc with its ridges, set in a
