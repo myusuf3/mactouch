@@ -40,8 +40,6 @@ struct MacTouchApp: App {
   }
 }
 
-let showInMenuBarKey = "showInMenuBar"
-
 final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Opening the app while it already runs, from Finder or Spotlight, is the
   /// way back once the menu bar icon has been hidden, and how daemon.sh
@@ -50,90 +48,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     UserDefaults.standard.set(true, forKey: showInMenuBarKey)
     DaemonAgent().register()
     return true
-  }
-}
-
-struct StatusMenu: View {
-  @ObservedObject var model: DaemonModel
-  @ObservedObject var agent: DaemonAgent
-
-  var body: some View {
-    Text(statusLine)
-      .onAppear { agent.refresh() }
-    if let ringLine { Text(ringLine) }
-    if !model.daemonRunning {
-      if agent.status == .requiresApproval {
-        Button("Allow MacTouch in Login Items…") { agent.openLoginItems() }
-      } else {
-        Button("Start Daemon") { agent.register() }
-      }
-    }
-    Divider()
-    if model.daemonRunning {
-      Picker("Idle Colour", selection: idleColour) {
-        ForEach(LEDColour.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-      }
-      .pickerStyle(.menu)
-      .disabled(!model.deviceConnected)
-      if let note = model.idleCoveredNote { Text(note) }
-      Menu("Monitors") {
-        ForEach(MonitorName.allCases, id: \.self) { name in
-          Toggle(name.label, isOn: monitor(name))
-        }
-      }
-      if model.notifyActive {
-        Button("Clear Notify Layer") { model.clearNotify() }
-      }
-      if model.firmwareUpdating {
-        Text("Updating firmware…")
-      } else if model.firmwareUpdateAvailable, let version = model.bundledFirmware?.version {
-        Button("Update Firmware to \(version)") { model.updateFirmware() }
-      }
-      Divider()
-    }
-    SettingsLink { Text("Settings…") }
-      .keyboardShortcut(",")
-    Button("Quit MacTouch") { NSApplication.shared.terminate(nil) }
-      .keyboardShortcut("q")
-  }
-
-  private var idleColour: Binding<LEDColour> {
-    Binding(get: { model.idle ?? .off }, set: { model.setIdle($0) })
-  }
-
-  private func monitor(_ name: MonitorName) -> Binding<Bool> {
-    Binding(get: { model.monitors.contains(name) }, set: { model.setMonitor(name, enabled: $0) })
-  }
-
-  private var statusLine: String {
-    guard model.daemonRunning else { return "Daemon not running" }
-    guard model.deviceConnected else { return "Device not connected" }
-    var parts = ["Connected"]
-    if let sensor = model.sensor { parts.append("sensor \(sensor)") }
-    if let prints = model.prints { parts.append(prints == 1 ? "1 finger" : "\(prints) fingers") }
-    return parts.joined(separator: " · ")
-  }
-
-  /// "Ring: breathing red (privacy)". The owning layer is named unless it is
-  /// the idle colour, which needs no explanation.
-  private var ringLine: String? {
-    guard model.daemonRunning, model.deviceConnected, let ring = model.ring else { return nil }
-    let parts = ring.split(separator: ":").map(String.init)
-    guard let mode = parts.first.flatMap(LEDMode.init), mode != .off, parts.count >= 2 else { return "Ring: off" }
-    let colours = parts.dropFirst().joined(separator: " and ")
-    var line = "Ring: \(describe(mode)) \(colours)"
-    if let owner = model.layers.last, owner != "idle" { line += " (\(owner))" }
-    return line
-  }
-
-  private func describe(_ mode: LEDMode) -> String {
-    switch mode {
-    case .off: return "off"
-    case .on: return "steady"
-    case .breathe: return "breathing"
-    case .flash: return "flashing"
-    case .fadein: return "fading in"
-    case .fadeout: return "fading out"
-    }
   }
 }
