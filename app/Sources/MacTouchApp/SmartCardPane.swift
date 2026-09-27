@@ -13,7 +13,6 @@ struct SmartCardPane: View {
 
   var body: some View {
     Form {
-      PaneHeader(.smartCard, summary: "Unlock your Mac with the sensor. At the lock screen, type the card's PIN, then touch.")
       if let card = model.smartCard {
         Section {
           Toggle(isOn: enabled(card)) {
@@ -21,6 +20,8 @@ struct SmartCardPane: View {
                      symbol: "creditcard.fill", tint: .green)
           }
           .disabled(!card.encrypted && !card.enabled || model.smartCardAction != nil)
+        } footer: {
+          Footnote("Unlock your Mac with the sensor: at the lock screen, type the card's PIN, then touch.")
         }
         Section {
           step(1, "Create Keys", done: card.identity,

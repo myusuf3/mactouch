@@ -37,13 +37,14 @@ struct MonitorsPane: View {
 
   var body: some View {
     Form {
-      PaneHeader(.monitors, summary: "MacTouch watches a few things on your Mac and shows them on the ring, so you know at a glance.")
       Section {
         ForEach(MonitorName.allCases, id: \.self) { name in
           Toggle(isOn: monitor(name)) {
             RowLabel(title: name.label, detail: name.detail, symbol: name.symbol, tint: name.tint)
           }
         }
+      } footer: {
+        Footnote("MacTouch watches these on your Mac and shows them on the ring, so you know at a glance.")
       }
       .disabled(!model.daemonRunning)
       if model.monitors.contains(.focus), model.focusSource == .menubar {

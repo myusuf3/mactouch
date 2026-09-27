@@ -8,7 +8,6 @@ struct DiagnosticsPane: View {
 
   var body: some View {
     Form {
-      PaneHeader(.diagnostics, summary: summary)
       Section {
         if let health = model.health {
           ForEach(health.checks, id: \.name) { check in
@@ -31,6 +30,10 @@ struct DiagnosticsPane: View {
             Text("Checking…").foregroundStyle(.secondary)
           }
         }
+      } header: {
+        Text(summary)
+      } footer: {
+        Footnote("The same check-up as mactouch doctor, including the sensor's self-test.")
       }
       Section {
         Button("Check Again") { model.refreshHealth() }
@@ -42,12 +45,12 @@ struct DiagnosticsPane: View {
   }
 
   private var summary: String {
-    guard let checks = model.health?.checks else { return "The same check-up as mactouch doctor, including the sensor's self-test." }
+    guard let checks = model.health?.checks else { return "Checking" }
     let problems = checks.filter { $0.verdict == .warn || $0.verdict == .bad }.count
     switch problems {
-    case 0: return "Everything checks out."
-    case 1: return "One thing needs a look."
-    default: return "\(problems) things need a look."
+    case 0: return "Everything Checks Out"
+    case 1: return "One Thing Needs a Look"
+    default: return "\(problems) Things Need a Look"
     }
   }
 

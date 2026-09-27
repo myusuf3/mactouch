@@ -8,7 +8,6 @@ struct FingersPane: View {
 
   var body: some View {
     Form {
-      PaneHeader(.fingers, summary: "A touch approves sudo, scripts and agents. Names stay on this Mac; the sensor only knows slot numbers.")
       Section {
         if model.slots.isEmpty {
           Text(model.deviceConnected ? "No fingers yet. Add one to approve with a touch." : "Connect the sensor to see its fingers.")
@@ -34,10 +33,10 @@ struct FingersPane: View {
             Image(systemName: "plus")
               .font(.system(size: 13, weight: .semibold))
               .frame(width: 26, height: 26)
-              .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 26 * 0.26, style: .continuous))
+              .background(.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 26 * 0.26, style: .continuous))
             Text("Add a Finger…")
           }
-          .foregroundStyle(Color.accentColor)
+          .foregroundStyle(.tint)
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -45,7 +44,9 @@ struct FingersPane: View {
       } header: {
         Text("Enrolled")
       } footer: {
-        if model.deviceConnected { Footnote("\(model.slots.count) of \(model.capacity) slots used") }
+        Footnote(model.deviceConnected
+          ? "\(model.slots.count) of \(model.capacity) slots used. A touch approves sudo, scripts and agents; names stay on this Mac."
+          : "A touch approves sudo, scripts and agents; names stay on this Mac.")
       }
     }
     .formStyle(.grouped)
