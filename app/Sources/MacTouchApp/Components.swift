@@ -23,37 +23,6 @@ struct SettingsIcon: View {
   }
 }
 
-/// The top of a pane: its icon, name and one line on what it is for.
-struct PaneHeader<Icon: View>: View {
-  var title: String
-  var summary: String
-  @ViewBuilder var icon: Icon
-
-  var body: some View {
-    Section {
-      VStack(spacing: 10) {
-        icon
-        Text(title)
-          .font(.title2.weight(.semibold))
-        Text(summary)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: 380)
-      }
-      .frame(maxWidth: .infinity)
-      .padding(.vertical, 10)
-    }
-  }
-}
-
-extension PaneHeader where Icon == SettingsIcon {
-  init(_ pane: SettingsPane, summary: String) {
-    self.init(title: pane.title, summary: summary) { SettingsIcon(symbol: pane.symbol, tint: pane.tint, size: 56) }
-  }
-}
-
 /// A row's leading icon, title and a line of detail under it.
 struct RowLabel: View {
   var title: String

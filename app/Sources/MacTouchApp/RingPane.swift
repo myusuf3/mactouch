@@ -2,23 +2,20 @@ import MacTouchKit
 import MacTouchModel
 import SwiftUI
 
-/// The resting colour, picked from lit swatches, and the stack of layers
-/// that take the ring over, each drawn the way it looks on the device.
+/// The resting colour, picked from tiles lit the way the sensor would be,
+/// and the stack of layers that take the ring over.
 struct RingPane: View {
   @ObservedObject var model: DaemonModel
 
   var body: some View {
     Form {
-      PaneHeader(title: "Ring", summary: "The light around the sensor. It rests in your colour and changes when your Mac has something to tell you.") {
-        DeviceView(ring: model.deviceConnected ? model.ringState : .off, size: 84)
-      }
       Section {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 14) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 12) {
           ForEach(LEDColour.allCases, id: \.self) { colour in
-            ColourSwatch(colour: colour, selected: model.idle == colour) { model.setIdle(colour) }
+            ColourTile(colour: colour, selected: model.idle == colour) { model.setIdle(colour) }
           }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .disabled(!model.deviceConnected)
       } header: {
         Text("Resting Colour")
@@ -56,10 +53,9 @@ struct RingPane: View {
   }
 
   @ViewBuilder private func badge(_ layer: RingLayer) -> some View {
-    let active = model.layers.contains(layer.name)
-    if model.deviceConnected, active {
+    if model.deviceConnected, model.layers.contains(layer.name) {
       if model.layers.last == layer.name {
-        StatusBadge(text: "Showing", tint: .accentColor)
+        StatusBadge(text: "Showing", tint: model.idle?.accent ?? .accentColor)
       } else {
         StatusBadge(text: "Covered", tint: .secondary)
       }
@@ -67,9 +63,9 @@ struct RingPane: View {
   }
 }
 
-/// One colour as a small lit disc. The chosen one carries a ring in the
-/// accent colour, like the wallpaper and accent pickers in System Settings.
-struct ColourSwatch: View {
+/// One colour as a tile holding a small sensor lit in it. The chosen tile
+/// is outlined in the window's tint, which is the ring colour itself.
+struct ColourTile: View {
   var colour: LEDColour
   var selected: Bool
   var action: () -> Void
@@ -77,34 +73,30 @@ struct ColourSwatch: View {
 
   var body: some View {
     Button(action: action) {
-      VStack(spacing: 6) {
-        ZStack {
-          Circle()
-            .fill(colour == .off ? AnyShapeStyle(Color(white: 0.12)) : AnyShapeStyle(colour.light.gradient))
-            .overlay(Circle().strokeBorder(.white.opacity(colour == .off ? 0.15 : 0.35), lineWidth: 0.5))
-            .shadow(color: colour == .off ? .clear : colour.light.opacity(hovering || selected ? 0.8 : 0.45), radius: hovering || selected ? 10 : 6)
-            .frame(width: 34, height: 34)
-          if colour == .off {
-            Image(systemName: "moon.fill")
-              .font(.system(size: 12))
-              .foregroundStyle(Color(white: 0.5))
-          }
-          Circle()
-            .strokeBorder(Color.accentColor, lineWidth: 2.5)
-            .frame(width: 44, height: 44)
-            .opacity(selected ? 1 : 0)
-        }
-        .frame(width: 46, height: 46)
-        .scaleEffect(hovering ? 1.06 : 1)
+      VStack(spacing: 7) {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .fill(colour == .off ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(colour.light.opacity(hovering ? 0.22 : 0.14)))
+          .overlay(DeviceView(ring: .steady(colour), size: 42))
+          .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+              .strokeBorder(.separator, lineWidth: 0.5)
+          )
+          .frame(height: 64)
+          .padding(3)
+          .overlay(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+              .strokeBorder(.tint, lineWidth: 2.5)
+              .opacity(selected ? 1 : 0)
+          )
         Text(colour.name)
-          .font(.caption)
+          .font(.callout.weight(selected ? .semibold : .regular))
           .foregroundStyle(selected ? .primary : .secondary)
       }
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .onHover { hovering = $0 }
-    .animation(.spring(duration: 0.25), value: hovering)
+    .animation(.smooth(duration: 0.2), value: hovering)
     .animation(.spring(duration: 0.3), value: selected)
     .accessibilityLabel(colour.name)
     .accessibilityAddTraits(selected ? .isSelected : [])
