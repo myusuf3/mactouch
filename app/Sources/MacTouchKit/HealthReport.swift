@@ -148,14 +148,14 @@ public struct HealthReport: Sendable {
   private static func pamCheck() -> HealthCheck {
     let module = "/usr/local/lib/pam/pam_mactouch.so"
     guard FileManager.default.fileExists(atPath: module) else {
-      return HealthCheck(.off, "sudo", "pam_mactouch not installed; sudo scripts/pam-install.sh")
+      return HealthCheck(.off, "sudo", "pam_mactouch not installed; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
     }
     let files = (try? FileManager.default.contentsOfDirectory(atPath: "/etc/pam.d")) ?? []
     let services = files.sorted().filter { name in
       (try? String(contentsOfFile: "/etc/pam.d/" + name, encoding: .utf8))?.contains(module) ?? false
     }
     return services.isEmpty
-      ? HealthCheck(.warn, "sudo", "module installed but no PAM service uses it; sudo scripts/pam-install.sh")
+      ? HealthCheck(.warn, "sudo", "module installed but no PAM service uses it; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
       : HealthCheck(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
   }
 
