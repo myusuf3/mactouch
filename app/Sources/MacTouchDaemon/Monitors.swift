@@ -8,7 +8,6 @@ final class Monitors {
   private let defaults: UserDefaults
   private let update: Update
   private let lock = ScreenLockMonitor()
-  private let focus = FocusMonitor()
   private let mic = AudioInputMonitor()
   private let camera = CameraMonitor()
   private var running: Set<MonitorName> = []
@@ -21,10 +20,6 @@ final class Monitors {
     lock.onChange = { [weak self] locked in
       log("screen \(locked ? "locked" : "unlocked")")
       self?.update(.locked, locked ? .off : nil)
-    }
-    focus.onChange = { [weak self] mode in
-      log("focus \(mode ?? "off")")
-      self?.update(.focus, mode.map { _ in .steady(.magenta) })
     }
     mic.onChange = { [weak self] _ in self?.privacyChanged() }
     camera.onChange = { [weak self] _ in self?.privacyChanged() }
@@ -57,7 +52,6 @@ final class Monitors {
     running.insert(name)
     switch name {
     case .lock: lock.start()
-    case .focus: focus.start(); log("focus monitor source=\(focus.source.rawValue)")
     case .mic: mic.start()
     case .camera: camera.start()
     }
@@ -68,7 +62,6 @@ final class Monitors {
     running.remove(name)
     switch name {
     case .lock: lock.stop(); update(.locked, nil)
-    case .focus: focus.stop(); update(.focus, nil)
     case .mic: mic.stop(); privacyChanged()
     case .camera: camera.stop(); privacyChanged()
     }
@@ -79,7 +72,6 @@ final class Monitors {
   }
 
   var enabledNames: [String] { MonitorName.allCases.filter(isEnabled).map(\.rawValue) }
-  var focusSource: FocusMonitor.Source? { running.contains(.focus) ? focus.source : nil }
 
   func set(_ name: MonitorName, enabled: Bool) {
     defaults.set(enabled, forKey: "monitor.\(name.rawValue)")

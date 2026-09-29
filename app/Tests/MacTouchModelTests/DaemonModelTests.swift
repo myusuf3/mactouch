@@ -36,8 +36,7 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     case "status":
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "breathe:red"), ("layers", "idle,privacy,notify"),
-        ("monitors", "lock,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
-        ("focus", "menubar"),
+        ("monitors", "lock,focus,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
       ]))
     case "slots":
       connection.send(ControlLine.ok("slots", [("used", "1,3"), ("capacity", "20")]))
@@ -78,10 +77,10 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     #expect(model.sensor == "ready")
     #expect(model.ring == "breathe:red")
     #expect(model.ringState == RingState(.breathe, .red))
-    #expect(model.focusSource == .menubar)
     #expect(model.layers == ["idle", "privacy", "notify"])
     #expect(model.notifyActive)
     #expect(model.idle == .cyan)
+    // A daemon from before Focus was dropped still lists it; the model skips it.
     #expect(model.monitors == [.lock, .mic])
     #expect(model.idleCoveredNote == "A notification is showing, so the ring shows red until it ends.")
 

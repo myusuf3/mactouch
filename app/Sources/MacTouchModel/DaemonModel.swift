@@ -63,9 +63,6 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var layers: [String] = []
   @Published public private(set) var idle: LEDColour?
   @Published public private(set) var monitors: Set<MonitorName> = []
-  /// Where the Focus monitor reads from; `menubar` is the fallback that
-  /// cannot name the mode, until mactouchd has Full Disk Access.
-  @Published public private(set) var focusSource: FocusMonitor.Source?
 
   @Published public private(set) var slots: [Int] = []
   @Published public private(set) var capacity = 20
@@ -117,7 +114,6 @@ public final class DaemonModel: ObservableObject {
     let colour = ring?.split(separator: ":").dropFirst().first.map(String.init) ?? "another colour"
     let cause: String
     switch top {
-    case "focus": cause = "A Focus is on"
     case "privacy": cause = "The microphone or camera is in use"
     case "locked": return "The screen is locked, so the ring is off until you unlock."
     case "notify": cause = "A notification is showing"
@@ -472,7 +468,6 @@ public final class DaemonModel: ObservableObject {
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
       model.idle = status["idle"].flatMap(LEDColour.init)
       model.monitors = Set(status["monitors"]?.split(separator: ",").compactMap { MonitorName(rawValue: String($0)) } ?? [])
-      model.focusSource = status["focus"].flatMap(FocusMonitor.Source.init)
       if !model.deviceConnected {
         model.sensor = nil
         model.prints = nil

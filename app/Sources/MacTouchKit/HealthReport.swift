@@ -97,18 +97,6 @@ public struct HealthReport: Sendable {
     }
 
     if let state = status?["piv"] { checks.append(pivCheck(state, pinIsDefault: piv?["pin"] == "default", identities: identities)) }
-
-    if let monitors = status?["monitors"] {
-      if !monitors.split(separator: ",").contains("focus") {
-        checks.append(HealthCheck(.off, "focus", "monitor off"))
-      } else if status?["focus"] == "assertions" {
-        checks.append(HealthCheck(.ok, "focus", "reads the Do Not Disturb store"))
-      } else if status?["focus"] == nil {
-        checks.append(HealthCheck(.off, "focus", "source unknown; the running mactouchd predates this check, scripts/daemon.sh restart"))
-      } else {
-        checks.append(HealthCheck(.warn, "focus", "menu bar fallback, cannot name the mode; grant mactouchd Full Disk Access in System Settings"))
-      }
-    }
     return checks
   }
 

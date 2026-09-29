@@ -11,12 +11,12 @@ import Testing
 
   @Test func highestLayerWins() {
     var policy = LEDPolicy(idle: .cyan)
-    policy.set(.focus, .steady(.magenta))
     policy.set(.privacy, RingState(.breathe, .red))
+    policy.set(.notify, .steady(.yellow))
+    #expect(policy.resolve() == .steady(.yellow))
+    policy.clear(.notify)
     #expect(policy.resolve() == RingState(.breathe, .red))
-    policy.clear(.privacy)
-    #expect(policy.resolve() == .steady(.magenta))
-    #expect(policy.active() == [.idle, .focus])
+    #expect(policy.active() == [.idle, .privacy])
   }
 
   @Test func lockedTurnsRingOffBelowPrivacy() {

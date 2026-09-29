@@ -24,7 +24,7 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   slots
   watch on|off                    match on every touch and report it
   touch pin|poll                  how the device detects a finger
-  monitor <lock|focus|mic|camera> on|off
+  monitor <lock|mic|camera> on|off
   pair [--timeout SECONDS]        print the device key (once per boot, needs a touch)
   piv status|on|off               the smart card for screen unlock (off by default)
   piv genkey|reset                make or destroy its identity; both need a touch

@@ -120,12 +120,11 @@ enum TaggedLine {
 
 /// The Mac-side signals the daemon can watch. Raw values are the socket names.
 public enum MonitorName: String, CaseIterable, Sendable {
-  case lock, focus, mic, camera
+  case lock, mic, camera
 
   public var label: String {
     switch self {
     case .lock: return "Screen Lock"
-    case .focus: return "Focus"
     case .mic: return "Microphone"
     case .camera: return "Camera"
     }

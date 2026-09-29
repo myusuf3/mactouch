@@ -42,6 +42,13 @@ import Testing
   }
 }
 
+@Suite struct MonitorNames {
+  @Test func areLockMicrophoneAndCamera() {
+    #expect(MonitorName.allCases == [.lock, .mic, .camera])
+    #expect(MonitorName(rawValue: "focus") == nil)
+  }
+}
+
 @Suite struct ControlSocketRoundTrip {
   @Test func requestAndEvents() throws {
     let path = NSTemporaryDirectory() + "mactouch-test-\(UUID().uuidString.prefix(8)).sock"

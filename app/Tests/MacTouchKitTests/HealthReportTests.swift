@@ -36,7 +36,8 @@ import Testing
     #expect(seen["sensor"] == .ok)
     #expect(seen["signature"] == .ok)
     #expect(seen["fingers"] == .ok)
-    #expect(seen["focus"] == .ok)
+    // An older mactouchd still reports the Focus monitor; there is no row for it.
+    #expect(seen["focus"] == nil)
     #expect(report.healthy)
     #expect(report.checks.first { $0.name == "device" }?.detail == "connected, firmware 0.1.1")
   }
@@ -50,7 +51,7 @@ import Testing
     #expect(seen["sensor"] == .off)
     #expect(seen["signature"] == nil)
     #expect(seen["fingers"] == nil)
-    #expect(seen["focus"] == .off)
+    #expect(seen["focus"] == nil)
   }
 
   @Test func badSignatureIsBad() throws {

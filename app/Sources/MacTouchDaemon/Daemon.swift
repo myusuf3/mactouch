@@ -136,7 +136,6 @@ final class Daemon {
         ("monitors", monitors.enabledNames.joined(separator: ",")),
         ("busy", busy ?? "none"),
       ]
-      if let source = monitors.focusSource { fields.append(("focus", source.rawValue)) }
       if busy == nil, let device = manager.device, let status = try? device.request(.status) {
         for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv", "slot", "probation"] {
           if let value = status[key] { fields.append((key, value)) }

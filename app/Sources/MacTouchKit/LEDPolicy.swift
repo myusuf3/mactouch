@@ -28,7 +28,6 @@ public struct RingState: Equatable, Sendable, CustomStringConvertible {
 public enum RingLayer: Int, CaseIterable, Comparable, Sendable {
   case idle = 0
   case locked = 10
-  case focus = 20
   case privacy = 30
   case notify = 40
   case prompt = 50
@@ -38,7 +37,6 @@ public enum RingLayer: Int, CaseIterable, Comparable, Sendable {
     switch self {
     case .idle: return "idle"
     case .locked: return "locked"
-    case .focus: return "focus"
     case .privacy: return "privacy"
     case .notify: return "notify"
     case .prompt: return "prompt"
