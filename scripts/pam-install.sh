@@ -2,6 +2,7 @@
 # Make a PAM service (sudo by default) accept a fingerprint.
 #
 #   sudo scripts/pam-install.sh [--service su] [--repair]
+#       [--module <built pam_mactouch.so>] [--cli <mactouch>]
 #
 # Pairs with the device as the invoking user, stores the device key root-only
 # in /etc/mactouch/<user>.key, installs pam_mactouch.so under
@@ -12,15 +13,24 @@
 # Pairing needs mactouchd running and a touch; the device releases its key
 # once per boot, so a second attempt needs a replug. --repair pairs again
 # even if a key is stored, which is how to rotate after a reflash.
+#
+# MacTouch.app runs this copy of the script from its bundle behind the
+# administrator prompt (ADR-0021), passing the module it carries, already
+# built and signed, and its own CLI, with SUDO_USER set to the person at the
+# prompt.
 set -euo pipefail
 
 here="${0:A:h}"
 service="sudo"
 repair=false
+prebuilt=""
+cli=""
 while (( $# )); do
   case "$1" in
     --service) service="$2"; shift 2 ;;
     --repair) repair=true; shift ;;
+    --module) prebuilt="$2"; shift 2 ;;
+    --cli) cli="$2"; shift 2 ;;
     *) print -u2 "unknown option $1"; exit 2 ;;
   esac
 done
@@ -54,17 +64,23 @@ line="auth       sufficient     $module_dst"
 [[ -f "$pam_file" ]] || { print -u2 "$pam_file does not exist"; exit 2 }
 [[ -L "$pam_file" ]] && { print -u2 "$pam_file is a symlink; edit it through whatever manages it"; exit 2 }
 
-mactouch="$home/.local/bin/mactouch"
+mactouch="${cli:-$home/.local/bin/mactouch}"
 [[ -x "$mactouch" ]] || mactouch="$here/../app/.build/debug/mactouch"
 [[ -x "$mactouch" ]] || { print -u2 "no mactouch binary; run scripts/install.sh or swift build first"; exit 2 }
 [[ -S "$home/Library/Application Support/MacTouch/control.sock" ]] || { print -u2 "mactouchd is not running for $user; start it first"; exit 2 }
 
-print "Building the module as $user"
-# Xcode may be installed but unlicensed; the command line tools always build this.
-[[ -d /Library/Developer/CommandLineTools ]] && export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
-sudo -H -u "$user" env DEVELOPER_DIR="${DEVELOPER_DIR:-}" make -C "$module_src" all >/dev/null
+if [[ -n "$prebuilt" ]]; then
+  [[ -f "$prebuilt" ]] || { print -u2 "no module at $prebuilt"; exit 2 }
+  module_built="$prebuilt"
+else
+  print "Building the module as $user"
+  # Xcode may be installed but unlicensed; the command line tools always build this.
+  [[ -d /Library/Developer/CommandLineTools ]] && export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
+  sudo -H -u "$user" env DEVELOPER_DIR="${DEVELOPER_DIR:-}" make -C "$module_src" all >/dev/null
+  module_built="$module_src/build/pam_mactouch.so"
+fi
 mkdir -p "${module_dst:h}"
-install -m 644 -o root -g wheel "$module_src/build/pam_mactouch.so" "$module_dst"
+install -m 644 -o root -g wheel "$module_built" "$module_dst"
 print "Installed $module_dst"
 
 if [[ -f "$key_file" ]] && ! $repair; then
