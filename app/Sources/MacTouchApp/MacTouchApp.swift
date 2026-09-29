@@ -15,28 +15,43 @@ struct MacTouchApp: App {
   /// The app keeps running hidden; opening it again brings the icon back.
   @AppStorage(showInMenuBarKey) private var showInMenuBar = true
   private let requestPanel: RequestPanel
+  private let setupWindow: SetupWindow
 
   init() {
     let image = Bundle.main.url(forResource: "mactouch", withExtension: "bin", subdirectory: "firmware")
       .flatMap { try? FirmwareImage(contentsOf: $0) }
-    let model = DaemonModel(bundledFirmware: image?.isMactouch == true ? image : nil)
+    let model = DaemonModel(bundledFirmware: image?.isMactouch == true ? image : nil,
+                            sudoInstaller: Self.bundledSudoInstaller)
     _model = StateObject(wrappedValue: model)
     let agent = DaemonAgent()
     _agent = StateObject(wrappedValue: agent)
     let loginItem = LoginItem()
     _loginItem = StateObject(wrappedValue: loginItem)
     requestPanel = RequestPanel(model: model)
+    setupWindow = SetupWindow(model: model)
     agent.install()
     loginItem.registerOnFirstLaunch()
   }
 
   var body: some Scene {
     MenuBarExtra("MacTouch", systemImage: "touchid", isInserted: $showInMenuBar) {
-      StatusMenu(model: model, agent: agent)
+      StatusMenu(model: model, agent: agent) { [setupWindow] in setupWindow.show() }
     }
     Settings {
       SettingsView(model: model, loginItem: loginItem)
     }
+  }
+
+  /// The PAM script and module bundle-app.sh puts in Resources/pam, and the
+  /// CLI in Helpers; nil when run from a build without them.
+  private static var bundledSudoInstaller: SudoInstaller? {
+    let bundle = Bundle.main.bundleURL
+    let pam = bundle.appendingPathComponent("Contents/Resources/pam")
+    let installer = SudoInstaller(script: pam.appendingPathComponent("pam-install.sh").path,
+                                  module: pam.appendingPathComponent("pam_mactouch.so").path,
+                                  cli: bundle.appendingPathComponent("Contents/Helpers/mactouch").path)
+    let present = [installer.script, installer.module, installer.cli].allSatisfy(FileManager.default.fileExists)
+    return present ? installer : nil
   }
 }
 

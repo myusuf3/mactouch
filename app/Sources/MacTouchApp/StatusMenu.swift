@@ -10,6 +10,7 @@ let showInMenuBarKey = "showInMenuBar"
 struct StatusMenu: View {
   @ObservedObject var model: DaemonModel
   @ObservedObject var agent: DaemonAgent
+  var openSetup: () -> Void
 
   var body: some View {
     Label { Text(statusLine) } icon: { Image(nsImage: (model.deviceConnected ? model.ringState?.colour : nil)?.swatch ?? LEDColour.off.swatch) }
@@ -49,6 +50,7 @@ struct StatusMenu: View {
       }
     }
     Divider()
+    Button("Set Up MacTouch…", action: openSetup)
     SettingsLink { Text("Settings…") }
       .keyboardShortcut(",")
     Button("Quit MacTouch") { NSApplication.shared.terminate(nil) }
