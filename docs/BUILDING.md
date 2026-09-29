@@ -204,10 +204,6 @@ ad hoc. The helpers must carry the same signature as the app: launchd
 refuses to spawn an `SMAppService` agent signed differently from the app
 that registered it. Another Mac needs a Developer ID.
 
-Full Disk Access is granted per binary. If you had granted it to
-`~/.local/bin/mactouchd` for the Focus monitor, grant it again to the daemon
-inside the app; `mactouch doctor` says when it is missing.
-
 ### Developer path without the app
 
 ```

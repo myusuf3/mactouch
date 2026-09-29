@@ -15,8 +15,9 @@ releases through Sparkle, still without an Xcode project).
 3. A setup window walks through the rest, each step skippable and each
    marked done from the device's own state: enrol a finger, turn on sudo by
    fingerprint (one administrator prompt), set up the smart card (make the
-   keys with a touch, set a PIN, pair), and grant Full Disk Access for the
-   Focus monitor.
+   keys with a touch, set a PIN, pair). Nothing asks for a privacy
+   permission; the Focus monitor that needed Full Disk Access is gone
+   (ADR-0020).
 4. Later, Sparkle offers new versions of the app. After one installs, the
    app restarts its daemon and offers the matching firmware, which installs
    over the link after a touch.

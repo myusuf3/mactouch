@@ -14,8 +14,7 @@ Three pieces of software share the work:
   never decides what a colour means or what a match unlocks.
 - **`mactouchd`**, a background daemon on the Mac started at login. It owns
   the USB connection, keeps the ring in sync with a stack of policy layers
-  (idle colour, screen locked, Focus, privacy, notifications, pending
-  request), watches the Mac for signals, and serves a local socket.
+  (idle colour, screen locked, privacy, notifications, pending request), watches the Mac for signals, and serves a local socket.
 - **`mactouch`**, the command line tool. It talks to the daemon when it is
   running and straight to the device otherwise. Scripts, shell aliases, PAM
   and AI-agent hooks all use it.

@@ -37,7 +37,6 @@ Breathing red · Privacy                         (the owning layer, unless idle)
 Ring Colour            ▸  ● Off ● Blue ● Green ● Cyan ● Red ● Magenta …
 MONITORS
   ✓ Screen Lock
-  ✓ Focus
   ✓ Microphone
   ✓ Camera
 ───────────────
@@ -85,9 +84,8 @@ icon, so the screen always matches the desk.
   the toggle is the opt-out and the choice is not touched again.
 - **Ring.** The resting colour as tiles, each a small lit sensor, and the
   layer stack from request down to idle, marking the one showing.
-- **Monitors.** The four toggles with a line each on what they show, and a
-  button to the Full Disk Access pane when Focus is on the menu bar
-  fallback.
+- **Monitors.** The three toggles, screen lock, microphone and camera, with a
+  line each on what they show.
 - **Fingers.** The slots from `slots`, a name per slot stored in the app's
   defaults, delete with confirmation, and enrolment in a sheet that fills a
   fingerprint as the daemon streams `evt enroll step=...`.

@@ -48,7 +48,6 @@ wins and lower ones show through when it clears:
 | -- | -- | -- | -- |
 | lowest | idle | always | your idle colour |
 | | locked | screen locked | off |
-| | focus | a Focus mode is on | magenta |
 | | privacy | microphone or camera live | breathing red |
 | | notify | `led` and `notify` commands | as requested |
 | highest | request | an identify is waiting | breathing blue, or white for a nonce request |
@@ -120,7 +119,6 @@ a view over the daemon.
 mactouch monitor mic off
 mactouch monitor camera on
 mactouch monitor lock on
-mactouch monitor focus on
 ```
 
 - **lock** uses the screen lock notifications macOS posts. No permission needed.
@@ -128,20 +126,15 @@ mactouch monitor focus on
   Headsets that combine input and output report in use while only playing
   audio; the built-in microphone does not.
 - **camera** asks CoreMediaIO the same question for every camera.
-- **focus** reads the Do Not Disturb assertion store when it can, which names
-  the active mode but sits behind Full Disk Access. Without that permission it
-  falls back to checking whether Control Center is showing the Focus item in
-  the menu bar, which macOS does only while a Focus is active under the
-  default "when active" setting. Grant `mactouchd` Full Disk Access in System
-  Settings to get the richer source.
-
-Settings persist across daemon restarts. `mactouch doctor` reports which
-source the focus monitor ended up with.
+Settings persist across daemon restarts. There is no Focus monitor
+(ADR-0020); to light the ring for a Focus, run `mactouch led on magenta` from
+a Shortcuts automation when it turns on and `mactouch clear` when it turns
+off.
 
 ### Diagnostics
 
 ```
-mactouch doctor              # verdicts with a fix each: daemon, device, sensor, fingers, focus source
+mactouch doctor              # verdicts with a fix each: daemon, device, sensor, fingers, sudo, unlock
 mactouch status              # daemon, device, firmware, sensor, ring, layers, monitors
 mactouch ping
 mactouch gpio                # levels of the unused XIAO pins
@@ -236,10 +229,6 @@ port. Use the BOOT button as described above.
 **After flashing, the board stays in download mode.** esptool's default hard
 reset over USB-JTAG leaves this board in download mode; the scripts use the
 RTC watchdog reset instead. Run `scripts/rom-reset.py` to boot the application.
-
-**Focus never shows.** Without Full Disk Access the monitor relies on the
-Focus menu bar item being set to "show when active" in System Settings under
-Control Center. Or grant the daemon Full Disk Access.
 
 **The sensor is offline right after flashing.** The module keeps power across
 a reset of the ESP32 and can miss the first handshake; the firmware retries

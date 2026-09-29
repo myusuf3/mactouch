@@ -32,7 +32,7 @@ Three constraints of launchd and SMAppService now bind the build, found by hitti
 - `register()` keeps the registration it already has. A changed plist or binary only takes effect after the agent is unloaded, which the bundle script does before reopening the app. An app update mechanism will have to do the same after a relaunch.
 - On a case-insensitive volume `Contents/MacOS/mactouch` is `Contents/MacOS/MacTouch`. The CLI lives in `Contents/Helpers` for that reason alone, and the app product is `MacTouchApp` for the same reason (ADR-0015).
 
-Full Disk Access is granted per binary, so a grant made for `~/.local/bin/mactouchd` does not carry to the daemon inside the app; the Focus monitor drops to its menu bar fallback until it is granted again, and doctor says so.
+Full Disk Access is granted per binary, so a grant made for `~/.local/bin/mactouchd` does not carry to the daemon inside the app; the Focus monitor dropped to its menu bar fallback until it was granted again. That cost is part of why the monitor was later removed (ADR-0020).
 
 The app deletes a file the user's own script created. That is deliberate and one-directional: the app is the install once it is present, and a developer who wants the script path again deletes the app first.
 

@@ -1,7 +1,7 @@
 # Status and roadmap
 
 - **Done:** firmware, protocol, CLI, daemon with policy stack, monitors for
-  lock, Focus, microphone and camera, key export and signed identify, launch
+  lock, microphone and camera (Focus was built and later dropped, ADR-0020), key export and signed identify, launch
   agent install, shared protocol vectors with a firmware self-test, `doctor`,
   and the PAM module with its install script. All verified on hardware,
   including a passwordless `su` on a touch.

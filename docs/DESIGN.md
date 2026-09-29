@@ -105,13 +105,10 @@ The device key is 32 random bytes generated on first boot and stored in NVS.
   disconnected.
 - `Device`: request/response with timeouts, event delivery, cancellation.
 - `LEDPolicy`: priority layers resolved to one ring state. Pure and tested.
-- `Monitors`: screen lock (distributed notifications), Focus mode, microphone
+- `Monitors`: screen lock (distributed notifications), microphone
   (CoreAudio running-somewhere on every input device), camera (CoreMediaIO
-  running-somewhere on every camera). Focus prefers the assertion store in
-  `~/Library/DoNotDisturb/DB`, which names the mode but needs Full Disk
-  Access; without it the monitor polls whether Control Center is showing the
-  Focus menu bar item, which macOS does by default only while a Focus is on.
-  The privacy layer drops one second after the last device stops, because
+  running-somewhere on every camera). None needs a permission; the Focus
+  monitor that did was dropped (ADR-0020). The privacy layer drops one second after the last device stops, because
   devices flap while an app opens them.
 - `ControlSocket`: server for the app, client for the CLI and PAM.
 
@@ -176,7 +173,6 @@ password prompt. Hard 20 second timeout.
 | -- | -- | -- | -- |
 | 0 | idle | user setting | chosen colour, steady, or off |
 | 10 | locked | screen lock monitor | off |
-| 20 | focus | Focus mode monitor | colour per mode (Do Not Disturb magenta by default) |
 | 30 | privacy | mic or camera live | red, breathe |
 | 40 | notify | CLI and hooks, with expiry | as requested |
 | 50 | prompt | identify in progress | blue breathe; sudo requests white breathe |

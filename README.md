@@ -4,8 +4,8 @@ A fingerprint sensor for your desk that macOS can ask "is that you?", with an
 RGB ring that shows you what your Mac is doing.
 
 Touch it to approve a `sudo`, a deploy, or a risky command an AI agent wants to
-run. Glance at it to see that your microphone is live, your screen is locked,
-or a Focus mode is on. The device only reads fingers, drives its ring, and
+run. Glance at it to see that your microphone or camera is live, or that your
+screen is locked. The device only reads fingers, drives its ring, and
 reports touches; every decision is made on the Mac.
 
 The hardware is [tinytouch](https://github.com/ZimengXiong/tinyTouch) by

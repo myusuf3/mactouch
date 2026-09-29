@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. The Focus source is superseded by [ADR-0020](0020-drop-the-focus-monitor.md); lock, microphone and camera stand.
 
 ## Context
 
