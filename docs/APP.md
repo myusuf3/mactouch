@@ -43,6 +43,7 @@ MONITORS
 Clear Notification Light                        (only when a notify layer is active)
 Update Firmware to 0.2.3…                       (only when the board is older)
 ───────────────
+Set Up MacTouch…
 Settings…                                        ⌘,
 Quit MacTouch                                    ⌘Q
 ```
@@ -99,6 +100,18 @@ icon, so the screen always matches the desk.
 
 Doctor's checks move from the CLI into MacTouchKit as a `HealthReport` so the
 CLI and the app render one list.
+
+## Setup window
+
+The guided first run from docs/ONBOARDING.md: a window of its own, one page
+per step, with the live sensor at the top, dots that turn green as steps
+are done, and Back and Continue (or Skip) at the bottom. Steps are ticked
+off from the sensor and the health report, so reopening it from "Set Up
+MacTouch…" starts at the first one still to do. AppKit owns the window, as
+it does the request panel, because a SwiftUI `Window` scene would open at
+every login on macOS 14; the app opens it on its own once, when it first
+finds sudo not set up. The sudo step runs the bundled install script behind
+the administrator prompt (ADR-0021).
 
 ## Request panel
 
