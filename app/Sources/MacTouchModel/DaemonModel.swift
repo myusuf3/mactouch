@@ -43,6 +43,12 @@ public final class DaemonModel: ObservableObject {
     case failed(String)
   }
 
+  /// Turning on sudo by fingerprint from the app, ADR-0021.
+  public enum SudoSetup: Equatable {
+    case running
+    case failed(String)
+  }
+
   /// A fingerprint request in flight on the daemon.
   public struct Request: Equatable {
     /// `plain` for an ordinary identify, `nonce` for one carrying a nonce,
@@ -85,6 +91,9 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var firmwareProgress: FirmwareProgress?
   /// The image this copy of the app installs, from its bundle.
   public let bundledFirmware: FirmwareImage?
+  /// What this copy of the app turns on sudo with, from its bundle.
+  public let sudoInstaller: SudoInstaller?
+  @Published public private(set) var sudoSetup: SudoSetup?
 
   public var firmwareUpdateAvailable: Bool {
     guard deviceConnected, let board = firmware, let carried = bundledFirmware?.version else { return false }
@@ -128,12 +137,19 @@ public final class DaemonModel: ObservableObject {
   private let defaults: UserDefaults
   private static let namesKey = "slotNames"
   private let requests = DispatchQueue(label: "mactouch.requests")
+  private let administrator: (_ command: [String], _ prompt: String) -> String?
 
+  /// `administrator` runs one command as root behind the system's
+  /// administrator prompt, which shows `prompt`, and returns why it failed,
+  /// or nil; tests stand in for the prompt.
   public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
-              bundledFirmware: FirmwareImage? = nil) {
+              bundledFirmware: FirmwareImage? = nil, sudoInstaller: SudoInstaller? = nil,
+              administrator: ((_ command: [String], _ prompt: String) -> String?)? = nil) {
     self.path = path
     self.defaults = defaults
     self.bundledFirmware = bundledFirmware
+    self.sudoInstaller = sudoInstaller
+    self.administrator = administrator ?? { Self.runAsAdministrator($0, prompt: $1) }
     let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
     names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
     let thread = Thread { [weak self] in self?.streamEvents() }
@@ -320,20 +336,20 @@ public final class DaemonModel: ObservableObject {
   /// PIN itself to wrap the keychain. Refused while the PIN is the default.
   public func pairSmartCard() {
     guard smartCardAction == nil, let card = smartCard, !card.pinIsDefault, let hash = card.unpairedHash else { return }
-    runSCAuth("pair", ["pair", "-u", NSUserName(), "-h", hash])
+    runSCAuth("pair", ["pair", "-u", NSUserName(), "-h", hash], prompt: "MacTouch wants to pair the smart card with your account.")
   }
 
   public func unpairSmartCard() {
     guard smartCardAction == nil else { return }
-    runSCAuth("unpair", ["unpair", "-u", NSUserName()])
+    runSCAuth("unpair", ["unpair", "-u", NSUserName()], prompt: "MacTouch wants to unpair the smart card from your account.")
   }
 
-  private func runSCAuth(_ action: String, _ arguments: [String]) {
+  private func runSCAuth(_ action: String, _ arguments: [String], prompt: String) {
     smartCardAction = action
     smartCardError = nil
     requests.async { [weak self] in
       guard let self else { return }
-      let failure = Self.runAsAdministrator(["/usr/sbin/sc_auth"] + arguments)
+      let failure = administrator(["/usr/sbin/sc_auth"] + arguments, prompt)
       loadSmartCard()
       publish { model in
         model.smartCardAction = nil
@@ -345,20 +361,33 @@ public final class DaemonModel: ObservableObject {
   /// One command as root through AppleScript's administrator prompt. Each
   /// word is passed through `quoted form of`, so nothing is re-parsed by the
   /// shell. Returns nil on success or the reason it failed.
-  private static func runAsAdministrator(_ words: [String]) -> String? {
+  static func runAsAdministrator(_ words: [String], prompt: String) -> String? {
     let escape = { (s: String) in s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
     let command = words.map { "quoted form of \"\(escape($0))\"" }.joined(separator: " & \" \" & ")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    process.arguments = ["-e", "do shell script \(command) with administrator privileges"]
+    process.arguments = ["-e", "do shell script \(command) with prompt \"\(escape(prompt))\" with administrator privileges"]
     let errors = Pipe()
     process.standardError = errors
     process.standardOutput = FileHandle.nullDevice
     do { try process.run() } catch { return error.localizedDescription }
     process.waitUntilExit()
     guard process.terminationStatus != 0 else { return nil }
-    let text = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    return text.contains("-128") ? "cancelled" : text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return administratorFailure(from: String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+  }
+
+  /// osascript reports a failed command as `0:130: execution error: <the
+  /// command's stderr> (<status>)`; the stderr is the part worth showing.
+  /// -128 is the user dismissing the prompt.
+  static func administratorFailure(from osascript: String) -> String {
+    let text = osascript.trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.hasSuffix("(-128)") { return "cancelled" }
+    guard let start = text.range(of: "execution error: ") else { return text }
+    var message = text[start.upperBound...]
+    if let status = message.range(of: #" \(-?\d+\)$"#, options: .regularExpression) {
+      message = message[..<status.lowerBound]
+    }
+    return String(message)
   }
 
   private func loadSmartCard() {
@@ -378,6 +407,28 @@ public final class DaemonModel: ObservableObject {
       paired: identities.map { !$0.paired.isEmpty },
       unpairedHash: identities?.unpaired.first?.hash)
     publish { $0.smartCard = card }
+  }
+
+  // MARK: sudo
+
+  /// Runs the bundled scripts/pam-install.sh as root behind one
+  /// administrator prompt, ADR-0021. The script pairs with the sensor as
+  /// this user, so the ring breathes white for a touch while it runs; the
+  /// health report afterwards is what says whether it took.
+  public func enableSudo() {
+    guard sudoSetup != .running, let installer = sudoInstaller else { return }
+    sudoSetup = .running
+    let command = ["/usr/bin/env", "SUDO_USER=\(NSUserName())", installer.script,
+                   "--module", installer.module, "--cli", installer.cli]
+    requests.async { [weak self] in
+      guard let self else { return }
+      let failure = administrator(command, "MacTouch wants to turn on sudo by fingerprint.")
+      let report = HealthReport.viaDaemon(at: path)
+      publish { model in
+        model.health = report
+        model.sudoSetup = failure.map(SudoSetup.failed)
+      }
+    }
   }
 
   // MARK: requests
