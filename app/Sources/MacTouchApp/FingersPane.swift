@@ -8,6 +8,7 @@ struct FingersPane: View {
 
   var body: some View {
     Form {
+      SudoSection(model: model)
       Section {
         if model.slots.isEmpty {
           Text(model.deviceConnected ? "No fingers yet. Add one to approve with a touch." : "Connect the sensor to see its fingers.")
@@ -50,7 +51,10 @@ struct FingersPane: View {
       }
     }
     .formStyle(.grouped)
-    .onAppear { model.refreshSlots() }
+    .onAppear {
+      model.refreshSlots()
+      model.refreshInstallState()
+    }
     .sheet(isPresented: $enrolling) { EnrolmentSheet(model: model) }
     .confirmationDialog("Delete \(slotToDelete.map(title) ?? "this finger")?", isPresented: deleting, titleVisibility: .visible, presenting: slotToDelete) { slot in
       Button("Delete", role: .destructive) { model.delete(slot: slot) }
@@ -69,6 +73,43 @@ struct FingersPane: View {
 
   private var deleting: Binding<Bool> {
     Binding(get: { slotToDelete != nil }, set: { if !$0 { slotToDelete = nil } })
+  }
+}
+
+/// Sudo by fingerprint, on and off through the bundled scripts behind the
+/// administrator prompt (ADR-0021). The switch shows what the PAM files
+/// say, so it only moves once the change has happened.
+struct SudoSection: View {
+  @ObservedObject var model: DaemonModel
+
+  var body: some View {
+    Section {
+      Toggle(isOn: sudo) {
+        RowLabel(title: "Use for sudo",
+                 detail: model.sudoByFingerprint ? "Terminal asks for a touch before your password." : "Terminal asks for your password.",
+                 symbol: "terminal.fill", tint: .gray)
+      }
+      .disabled(!model.canChangeSudo || model.sudoTask == .running || (!model.sudoByFingerprint && !model.daemonRunning))
+      if model.sudoTask == .running {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.small)
+          Text(model.sudoByFingerprint
+               ? "Enter your password in the macOS prompt…"
+               : "Enter your password in the macOS prompt, then touch the sensor when the ring breathes white…")
+            .foregroundStyle(.secondary)
+        }
+      } else if case .failed(let reason)? = model.sudoTask, reason != "cancelled" {
+        Label(reason, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+      }
+    } footer: {
+      Footnote(model.canChangeSudo
+               ? "Your password keeps working whenever you would rather type it. Turning this off keeps the sensor's key, so turning it on again needs no touch."
+               : "This copy of MacTouch cannot change it. From the source checkout, run sudo scripts/pam-install.sh or pam-uninstall.sh.")
+    }
+  }
+
+  private var sudo: Binding<Bool> {
+    Binding(get: { model.sudoByFingerprint }, set: { $0 ? model.enableSudo() : model.disableSudo() })
   }
 }
 
