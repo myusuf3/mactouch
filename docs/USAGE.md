@@ -100,14 +100,19 @@ A failed update rolls back on its own and the command says so.
 ### Menu bar app
 
 `scripts/bundle-app.sh` installs `MacTouch.app` in `~/Applications`. The app
-carries the daemon and the CLI, starts the daemon at login, and puts
-`mactouch` on your PATH through `~/.local/bin`; uninstalling is deleting the
-app and, if you set it up, `sudo scripts/pam-uninstall.sh`. Its menu
-shows the daemon, device and ring state, sets the idle colour, toggles the
-monitors and clears the notify layer. Settings (⌘,) has General for the
-idle colour, launch at login (on from the first run; turn it off there) and
-hiding the icon (open MacTouch again to bring it back), Fingers, where you enrol, name and delete fingers, and
-Diagnostics, the doctor rows kept live.
+carries the daemon and the CLI and starts the daemon at login. The first
+time it finds sudo not set up it opens a setup window that walks through
+connecting the sensor, a finger and sudo by fingerprint; "Set Up
+MacTouch…" in the menu opens it again. Its menu shows the device and ring
+state, sets the resting colour, toggles the monitors and clears the notify
+layer. Settings (⌘,) has General for launch at login (on from the first
+run), hiding the icon (open MacTouch again to bring it back) and putting
+`mactouch` in `/usr/local/bin`; Ring for the resting colour; Fingers to
+enrol, name and delete fingers and to turn sudo by fingerprint on or off;
+and Diagnostics, the doctor rows kept live. `bundle-app.sh` also links
+`mactouch` into `~/.local/bin` for the developer path. Uninstalling is
+turning sudo off in Fingers, removing the command in General, then
+deleting the app.
 While the app runs, a fingerprint request shows as a small floating panel in
 the centre of the screen with the requester's reason and a Cancel button, in
 place of the daemon's plain popup, and it stays visible under a Focus mode. Everything the app does the CLI does too; it is

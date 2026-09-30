@@ -79,17 +79,20 @@ with the real one (steady under Reduce Motion). It is the General card,
 the About and Firmware heroes, each colour tile and the request panel's
 icon, so the screen always matches the desk.
 
-- **General.** The sensor with its state, then launch at login and show in
-  menu bar. Launch at login is turned on the first time the app runs,
+- **General.** The sensor with its state, launch at login and show in menu
+  bar, and the command line tool: a link at `/usr/local/bin/mactouch` to
+  the bundled CLI, installed and removed behind the administrator prompt. Launch at login is turned on the first time the app runs,
   because an app whose job is to be there when sudo asks is no use absent;
   the toggle is the opt-out and the choice is not touched again.
 - **Ring.** The resting colour as tiles, each a small lit sensor, and the
   layer stack from request down to idle, marking the one showing.
 - **Monitors.** The three toggles, screen lock, microphone and camera, with a
   line each on what they show.
-- **Fingers.** The slots from `slots`, a name per slot stored in the app's
-  defaults, delete with confirmation, and enrolment in a sheet that fills a
-  fingerprint as the daemon streams `evt enroll step=...`.
+- **Fingers.** Use for sudo, which runs the bundled install or uninstall
+  script and shows what `/etc/pam.d` says; the slots from `slots`, a name per
+  slot stored in the app's defaults, delete with confirmation, and
+  enrolment in a sheet that fills a fingerprint as the daemon streams
+  `evt enroll step=...`.
 - **Smart Card.** Screen unlock through the device's PIV card (docs/PIV.md)
   as three steps ticked off from the card's state: keys, PIN, pairing.
 - **Firmware.** The sensor, its version in a capsule (`0.2.2 → 0.2.3` when

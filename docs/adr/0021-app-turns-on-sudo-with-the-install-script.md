@@ -26,4 +26,4 @@ Root runs a script from inside the app bundle, which lives in a folder the user 
 
 The script pairs over the daemon, so the step needs mactouchd running and, unless a key is already stored, a touch while the ring breathes white. The sensor releases its key once per boot, so a second attempt after a failure needs a replug, and the step says so from the script's message.
 
-Uninstalling stays with `scripts/pam-uninstall.sh` for now; the app does not yet offer to turn sudo off.
+Turning sudo off works the same way with the bundled `pam-uninstall.sh`, which keeps the stored key so turning it on again needs no touch. The same prompt puts the `mactouch` command in `/usr/local/bin`, which is on every Mac's PATH, as a link into the bundle; the app replaces or removes only a link that points into a MacTouch.app.

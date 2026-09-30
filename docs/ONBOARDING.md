@@ -64,9 +64,9 @@ Each step ships on its own and is verified on hardware.
    `pam-install.sh` behind the administrator prompt (ADR-0021). Verified:
    the model's tests, every page rendered against the live sensor and a
    fresh one, the bundle carrying the signed module and script, and the
-   window staying shut on a Mac already set up. Still to do: a run of the
-   sudo step on a Mac without it, and the CLI symlink, which only
-   `bundle-app.sh` makes today.
+   window staying shut on a Mac already set up. Settings turns sudo off
+   again (Fingers) and puts the CLI in `/usr/local/bin` (General), through
+   the same prompt. Still to do: a run of the sudo step on a Mac without it.
 5. **Sparkle and the release script.** The dependency, the menu item and
    setting, the daemon restart on version change, `scripts/release.sh` with
    Developer ID signing, notarisation and the appcast. Verify: install a
