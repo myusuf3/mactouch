@@ -236,9 +236,9 @@ struct SetupView: View {
   @ViewBuilder private var sudo: some View {
     if model.isDone(.sudo) {
       Done("sudo accepts your fingerprint")
-    } else if !model.canEnableSudo {
+    } else if !model.canChangeSudo {
       Waiting("This copy of MacTouch cannot turn it on. From the source checkout, run sudo scripts/pam-install.sh.")
-    } else if model.sudoSetup == .running {
+    } else if model.sudoTask == .running {
       VStack(spacing: 8) {
         ProgressView().controlSize(.small)
         Text("Enter your password in the macOS prompt, then touch the sensor when the ring breathes white.")
@@ -251,7 +251,7 @@ struct SetupView: View {
         Button("Turn On…") { model.enableSudo() }
           .buttonStyle(.borderedProminent)
           .disabled(!model.daemonRunning)
-        if case .failed(let reason)? = model.sudoSetup, reason != "cancelled" {
+        if case .failed(let reason)? = model.sudoTask, reason != "cancelled" {
           Label(reason, systemImage: "exclamationmark.triangle.fill")
             .font(.callout)
             .foregroundStyle(.red)

@@ -21,7 +21,7 @@ struct MacTouchApp: App {
     let image = Bundle.main.url(forResource: "mactouch", withExtension: "bin", subdirectory: "firmware")
       .flatMap { try? FirmwareImage(contentsOf: $0) }
     let model = DaemonModel(bundledFirmware: image?.isMactouch == true ? image : nil,
-                            sudoInstaller: Self.bundledSudoInstaller)
+                            tools: Self.bundledTools)
     _model = StateObject(wrappedValue: model)
     let agent = DaemonAgent()
     _agent = StateObject(wrappedValue: agent)
@@ -42,16 +42,17 @@ struct MacTouchApp: App {
     }
   }
 
-  /// The PAM script and module bundle-app.sh puts in Resources/pam, and the
-  /// CLI in Helpers; nil when run from a build without them.
-  private static var bundledSudoInstaller: SudoInstaller? {
+  /// The PAM scripts and module bundle-app.sh puts in Resources/pam, and
+  /// the CLI in Helpers; nil when run from a build without them.
+  private static var bundledTools: BundledTools? {
     let bundle = Bundle.main.bundleURL
     let pam = bundle.appendingPathComponent("Contents/Resources/pam")
-    let installer = SudoInstaller(script: pam.appendingPathComponent("pam-install.sh").path,
-                                  module: pam.appendingPathComponent("pam_mactouch.so").path,
-                                  cli: bundle.appendingPathComponent("Contents/Helpers/mactouch").path)
-    let present = [installer.script, installer.module, installer.cli].allSatisfy(FileManager.default.fileExists)
-    return present ? installer : nil
+    let tools = BundledTools(pamInstall: pam.appendingPathComponent("pam-install.sh").path,
+                             pamUninstall: pam.appendingPathComponent("pam-uninstall.sh").path,
+                             pamModule: pam.appendingPathComponent("pam_mactouch.so").path,
+                             cli: bundle.appendingPathComponent("Contents/Helpers/mactouch").path)
+    let present = [tools.pamInstall, tools.pamUninstall, tools.pamModule, tools.cli].allSatisfy(FileManager.default.fileExists)
+    return present ? tools : nil
   }
 }
 

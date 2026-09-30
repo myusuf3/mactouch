@@ -1,14 +1,35 @@
 import Foundation
 import MacTouchKit
 
-/// The pieces the app bundle carries to turn on sudo by fingerprint:
-/// scripts/pam-install.sh, the module it installs, and the CLI it pairs with.
-public struct SudoInstaller: Equatable, Sendable {
-  public let script: String
-  public let module: String
+/// What the app bundle carries to change the Mac as root, ADR-0021: the PAM
+/// module with the scripts that install and remove it, and the CLI, which
+/// the install script pairs with and /usr/local/bin can point at.
+public struct BundledTools: Equatable, Sendable {
+  public let pamInstall: String
+  public let pamUninstall: String
+  public let pamModule: String
   public let cli: String
-  public init(script: String, module: String, cli: String) {
-    self.script = script; self.module = module; self.cli = cli
+  public init(pamInstall: String, pamUninstall: String, pamModule: String, cli: String) {
+    self.pamInstall = pamInstall; self.pamUninstall = pamUninstall; self.pamModule = pamModule; self.cli = cli
+  }
+}
+
+/// What sits where the app puts the `mactouch` command.
+public enum CommandLineTool: Equatable, Sendable {
+  case absent
+  /// A link to this copy of the app's CLI.
+  case installed
+  /// A link into another copy of MacTouch.app, such as one since moved.
+  case stale
+  /// Something that is not MacTouch's; the app leaves it alone.
+  case occupied
+
+  public static func status(at link: String, for cli: String) -> CommandLineTool {
+    guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: link) else {
+      return FileManager.default.fileExists(atPath: link) ? .occupied : .absent
+    }
+    if destination == cli { return .installed }
+    return destination.hasSuffix("MacTouch.app/Contents/Helpers/mactouch") ? .stale : .occupied
   }
 }
 
@@ -28,18 +49,23 @@ extension DaemonModel {
     case .connect: return deviceConnected
     case .firmware: return deviceConnected && firmware != nil && !firmwareUpdateAvailable
     case .finger: return (prints ?? 0) > 0
-    case .sudo: return health?.checks.first { $0.name == "sudo" }?.verdict == .ok
+    case .sudo: return sudoByFingerprint
     case .smartCard: return smartCard?.paired == true
     }
   }
 
-  /// Whether this Mac still needs setting up, nil until the health report
-  /// says. Sudo by fingerprint is the thing MacTouch is for, and unlike the
-  /// sensor's state it does not depend on the sensor being plugged in.
-  public var needsSetup: Bool? {
-    guard health != nil else { return nil }
-    return !isDone(.sudo)
+  /// Whether sudo itself loads the module, directly or through the
+  /// sudo_local file it includes. Other services, such as su, do not count.
+  public var sudoByFingerprint: Bool {
+    pamServices?.contains { $0 == "sudo" || $0 == "sudo_local" } ?? false
   }
 
-  public var canEnableSudo: Bool { sudoInstaller != nil }
+  /// Whether this Mac still needs setting up, nil until its PAM files have
+  /// been read. Sudo by fingerprint is the thing MacTouch is for, and unlike
+  /// the sensor's state it does not depend on the sensor being plugged in.
+  public var needsSetup: Bool? {
+    pamServices.map { _ in !sudoByFingerprint }
+  }
+
+  public var canChangeSudo: Bool { tools != nil }
 }

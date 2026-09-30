@@ -43,8 +43,9 @@ public final class DaemonModel: ObservableObject {
     case failed(String)
   }
 
-  /// Turning on sudo by fingerprint from the app, ADR-0021.
-  public enum SudoSetup: Equatable {
+  /// A change the app makes as root behind the administrator prompt,
+  /// ADR-0021: in flight, or why it did not happen.
+  public enum AdminTask: Equatable {
     case running
     case failed(String)
   }
@@ -91,9 +92,14 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var firmwareProgress: FirmwareProgress?
   /// The image this copy of the app installs, from its bundle.
   public let bundledFirmware: FirmwareImage?
-  /// What this copy of the app turns on sudo with, from its bundle.
-  public let sudoInstaller: SudoInstaller?
-  @Published public private(set) var sudoSetup: SudoSetup?
+  /// What this copy of the app changes the Mac with, from its bundle.
+  public let tools: BundledTools?
+  /// The PAM services that load pam_mactouch, nil until read.
+  @Published public private(set) var pamServices: [String]?
+  /// What is at /usr/local/bin/mactouch, nil without the bundled CLI.
+  @Published public private(set) var commandLineTool: CommandLineTool?
+  @Published public private(set) var sudoTask: AdminTask?
+  @Published public private(set) var commandLineTask: AdminTask?
 
   public var firmwareUpdateAvailable: Bool {
     guard deviceConnected, let board = firmware, let carried = bundledFirmware?.version else { return false }
@@ -138,17 +144,22 @@ public final class DaemonModel: ObservableObject {
   private static let namesKey = "slotNames"
   private let requests = DispatchQueue(label: "mactouch.requests")
   private let administrator: (_ command: [String], _ prompt: String) -> String?
+  private let pamDirectory: String
+  private let commandLineLink: String
 
   /// `administrator` runs one command as root behind the system's
   /// administrator prompt, which shows `prompt`, and returns why it failed,
   /// or nil; tests stand in for the prompt.
   public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
-              bundledFirmware: FirmwareImage? = nil, sudoInstaller: SudoInstaller? = nil,
+              bundledFirmware: FirmwareImage? = nil, tools: BundledTools? = nil,
+              pamDirectory: String = "/etc/pam.d", commandLineLink: String = "/usr/local/bin/mactouch",
               administrator: ((_ command: [String], _ prompt: String) -> String?)? = nil) {
     self.path = path
     self.defaults = defaults
     self.bundledFirmware = bundledFirmware
-    self.sudoInstaller = sudoInstaller
+    self.tools = tools
+    self.pamDirectory = pamDirectory
+    self.commandLineLink = commandLineLink
     self.administrator = administrator ?? { Self.runAsAdministrator($0, prompt: $1) }
     let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
     names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
@@ -234,6 +245,7 @@ public final class DaemonModel: ObservableObject {
       guard let self else { return }
       let report = HealthReport.viaDaemon(at: path)
       publish { $0.health = report }
+      loadInstallState()
     }
   }
 
@@ -409,25 +421,82 @@ public final class DaemonModel: ObservableObject {
     publish { $0.smartCard = card }
   }
 
-  // MARK: sudo
+  // MARK: sudo and the command line tool
 
   /// Runs the bundled scripts/pam-install.sh as root behind one
   /// administrator prompt, ADR-0021. The script pairs with the sensor as
-  /// this user, so the ring breathes white for a touch while it runs; the
-  /// health report afterwards is what says whether it took.
+  /// this user, so the ring breathes white for a touch unless a key is
+  /// already stored; the PAM files afterwards say whether it took.
   public func enableSudo() {
-    guard sudoSetup != .running, let installer = sudoInstaller else { return }
-    sudoSetup = .running
-    let command = ["/usr/bin/env", "SUDO_USER=\(NSUserName())", installer.script,
-                   "--module", installer.module, "--cli", installer.cli]
+    guard let tools else { return }
+    runSudo(["/usr/bin/env", "SUDO_USER=\(NSUserName())", tools.pamInstall,
+             "--module", tools.pamModule, "--cli", tools.cli],
+            prompt: "MacTouch wants to turn on sudo by fingerprint.")
+  }
+
+  /// Runs the bundled scripts/pam-uninstall.sh, which takes the module out
+  /// of sudo and keeps the stored key, so turning it on again needs no touch.
+  public func disableSudo() {
+    guard let tools else { return }
+    runSudo([tools.pamUninstall], prompt: "MacTouch wants to turn off sudo by fingerprint.")
+  }
+
+  private func runSudo(_ command: [String], prompt: String) {
+    guard sudoTask != .running else { return }
+    sudoTask = .running
     requests.async { [weak self] in
       guard let self else { return }
-      let failure = administrator(command, "MacTouch wants to turn on sudo by fingerprint.")
+      let failure = administrator(command, prompt)
       let report = HealthReport.viaDaemon(at: path)
       publish { model in
         model.health = report
-        model.sudoSetup = failure.map(SudoSetup.failed)
+        model.sudoTask = failure.map(AdminTask.failed)
       }
+      loadInstallState()
+    }
+  }
+
+  /// Links /usr/local/bin/mactouch to this copy's CLI, which is on every
+  /// Mac's PATH, replacing a link to another copy of the app but nothing
+  /// else. The folder is made if it is missing.
+  public func installCommandLineTool() {
+    guard let tools, commandLineTool != .occupied, commandLineTool != .installed else { return }
+    runCommandLine(["/bin/sh", "-c", #"mkdir -p "$(dirname "$1")" && ln -sfn "$2" "$1""#, "sh", commandLineLink, tools.cli],
+                   prompt: "MacTouch wants to put the mactouch command in /usr/local/bin.")
+  }
+
+  /// Removes the link, only when it is MacTouch's.
+  public func removeCommandLineTool() {
+    guard commandLineTool == .installed || commandLineTool == .stale else { return }
+    runCommandLine(["/bin/rm", "-f", commandLineLink],
+                   prompt: "MacTouch wants to remove the mactouch command from /usr/local/bin.")
+  }
+
+  private func runCommandLine(_ command: [String], prompt: String) {
+    guard commandLineTask != .running else { return }
+    commandLineTask = .running
+    requests.async { [weak self] in
+      guard let self else { return }
+      let failure = administrator(command, prompt)
+      loadInstallState()
+      publish { $0.commandLineTask = failure.map(AdminTask.failed) }
+    }
+  }
+
+  /// Rereads the PAM files and the command's path, without the device round
+  /// trip a health report takes.
+  public func refreshInstallState() {
+    requests.async { [weak self] in self?.loadInstallState() }
+  }
+
+  /// What the Mac says now: which PAM services load the module and what is
+  /// at the command's path. Files only, so it works with the daemon down.
+  private func loadInstallState() {
+    let services = PAMConfig.services(in: pamDirectory)
+    let tool = tools.map { CommandLineTool.status(at: commandLineLink, for: $0.cli) }
+    publish { model in
+      model.pamServices = services
+      model.commandLineTool = tool
     }
   }
 

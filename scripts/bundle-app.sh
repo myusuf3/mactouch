@@ -38,14 +38,15 @@ if [[ -f "$firmware" ]]; then
   mkdir -p "$stage/Contents/Resources/firmware"
   install -m 644 "$firmware" "$stage/Contents/Resources/firmware/mactouch.bin"
 fi
-# What turns on sudo by fingerprint from the setup window (ADR-0021): the
-# module, built here with the command line tools, and the script that
-# installs it, run by the app behind the administrator prompt.
+# What turns sudo by fingerprint on and off from the app (ADR-0021): the
+# module, built here with the command line tools, and the scripts that
+# install and remove it, run by the app behind the administrator prompt.
 [[ -d /Library/Developer/CommandLineTools ]] && export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
 make -C "$here/../pam" all >/dev/null
 mkdir -p "$stage/Contents/Resources/pam"
 install -m 644 "$here/../pam/build/pam_mactouch.so" "$stage/Contents/Resources/pam/pam_mactouch.so"
 install -m 755 "$here/pam-install.sh" "$stage/Contents/Resources/pam/pam-install.sh"
+install -m 755 "$here/pam-uninstall.sh" "$stage/Contents/Resources/pam/pam-uninstall.sh"
 cat > "$stage/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
