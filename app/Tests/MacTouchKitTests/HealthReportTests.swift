@@ -101,3 +101,17 @@ import Testing
     #expect(row?.detail.contains("changepin") == true)
   }
 }
+
+@Suite struct PAMServices {
+  @Test func areTheFilesThatNameTheModule() throws {
+    let directory = NSTemporaryDirectory() + "mactouch-pam-\(UUID().uuidString.prefix(8))"
+    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+    let line = "auth       sufficient     \(PAMConfig.module)\n"
+    try (line + "auth include sudo_local\n").write(toFile: directory + "/su", atomically: true, encoding: .utf8)
+    try ("# sudo_local\n" + line).write(toFile: directory + "/sudo_local", atomically: true, encoding: .utf8)
+    try "auth required pam_opendirectory.so\n".write(toFile: directory + "/login", atomically: true, encoding: .utf8)
+    #expect(PAMConfig.services(in: directory) == ["su", "sudo_local"])
+    #expect(PAMConfig.services(in: directory + "/missing").isEmpty)
+  }
+}

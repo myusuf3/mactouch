@@ -146,14 +146,10 @@ public struct HealthReport: Sendable {
   /// Which PAM services name the module. The key itself is root-only, so this
   /// reports installation, not pairing state.
   private static func pamCheck() -> HealthCheck {
-    let module = "/usr/local/lib/pam/pam_mactouch.so"
-    guard FileManager.default.fileExists(atPath: module) else {
+    guard FileManager.default.fileExists(atPath: PAMConfig.module) else {
       return HealthCheck(.off, "sudo", "pam_mactouch not installed; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
     }
-    let files = (try? FileManager.default.contentsOfDirectory(atPath: "/etc/pam.d")) ?? []
-    let services = files.sorted().filter { name in
-      (try? String(contentsOfFile: "/etc/pam.d/" + name, encoding: .utf8))?.contains(module) ?? false
-    }
+    let services = PAMConfig.services()
     return services.isEmpty
       ? HealthCheck(.warn, "sudo", "module installed but no PAM service uses it; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
       : HealthCheck(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
