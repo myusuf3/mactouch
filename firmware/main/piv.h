@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "unlock.h"
+
 // The card behind the CCID reader: the subset of the PIV application
 // (SP 800-73-4) that macOS's built-in token driver uses. docs/PIV.md.
 
@@ -21,6 +23,9 @@ void piv_session_reset(void);
 // device is invisible to the Mac's smart card stack.
 bool piv_enabled(void);
 void piv_set_enabled(bool enabled);
+// What the reader reports: the card is there only while it is on and the
+// Mac unlocks with it, so password mode shows macOS no card (ADR-0022).
+bool piv_card_present(void);
 
 // The identity: P-256 keys for PIV Authentication (9A) and Key Management
 // (9D) with self-signed certificates, made here and never exported. Both
@@ -31,3 +36,8 @@ void piv_reset_identity(void);
 // Whether the PIN is still the factory 123456, and tries left before block.
 bool piv_pin_is_default(void);
 uint8_t piv_pin_retries(void);
+
+// How the Mac is unlocked (ADR-0022). Persisted; PIN by default, and a reset
+// returns it there.
+unlock_mode_t piv_unlock_mode(void);
+void piv_set_unlock_mode(unlock_mode_t mode);

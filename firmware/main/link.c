@@ -23,11 +23,13 @@
 #include "tusb.h"
 
 #include "fw_update.h"
+#include "keyboard.h"
 #include "led.h"
 #include "piv.h"
 #include "presence.h"
 #include "settings.h"
 #include "touch.h"
+#include "unlock.h"
 #include "usb.h"
 #include "vectors.h"
 #include "zw101.h"
@@ -46,6 +48,13 @@ static QueueHandle_t jobs;
 static volatile bool busy;
 static volatile bool cancel_requested;
 static bool pair_done;
+
+#define TYPE_WINDOW_US (5 * 1000 * 1000)
+// Set by the console task, taken by the touch task.
+static portMUX_TYPE arm_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool armed;
+static char arm_nonce[33];
+static int64_t type_until;
 static char final_reply[LINK_LINE_MAX];
 
 // Stages the reply of a long-running command; the worker sends it after the
@@ -95,6 +104,15 @@ static void write_line(const char *text) {
 }
 
 bool link_busy(void) { return busy; }
+bool link_armed(void) { return armed; }
+
+static void set_armed(const char *nonce) {
+  taskENTER_CRITICAL(&arm_lock);
+  armed = nonce != NULL;
+  if (nonce) strlcpy(arm_nonce, nonce, sizeof(arm_nonce));
+  type_until = 0;
+  taskEXIT_CRITICAL(&arm_lock);
+}
 
 // key=value lookup among space-separated tokens.
 static bool arg(const char *args, const char *key, char *out, size_t cap) {
@@ -174,6 +192,75 @@ static bool sign_identify(const uint8_t key[32], const char *nonce, uint16_t slo
   return true;
 }
 
+void link_report_match(uint16_t slot, uint16_t score) {
+  char nonce[sizeof(arm_nonce)];
+  taskENTER_CRITICAL(&arm_lock);
+  bool was_armed = armed;
+  armed = false;
+  memcpy(nonce, arm_nonce, sizeof(nonce));
+  if (was_armed) type_until = esp_timer_get_time() + TYPE_WINDOW_US;
+  taskEXIT_CRITICAL(&arm_lock);
+  if (!was_armed) {
+    link_send("EVT MATCH slot=%u score=%u", slot, score);
+    return;
+  }
+  uint8_t key[32];
+  char mac_hex[65];
+  settings_device_key(key);
+  bool signed_ok = sign_identify(key, nonce, slot, mac_hex);
+  memset(key, 0, sizeof(key));
+  if (signed_ok) link_send("EVT MATCH slot=%u score=%u mac=%s", slot, score, mac_hex);
+}
+
+static bool hex_decode(const char *hex, uint8_t *out, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    char pair[3] = {hex[i * 2], hex[i * 2 + 1], '\0'};
+    if (!isxdigit((unsigned char)pair[0]) || !isxdigit((unsigned char)pair[1])) return false;
+    out[i] = (uint8_t)strtoul(pair, NULL, 16);
+  }
+  return true;
+}
+
+// ARM nonce=<hex32> | ARM off. Only in password mode, where the keyboard is.
+static void arm_command(const char *args) {
+  char nonce[64];
+  if (strcmp(args, "off") == 0) {
+    set_armed(NULL);
+    link_send("OK ARM");
+  } else if (piv_unlock_mode() != UNLOCK_PASSWORD || !usb_has_keyboard()) {
+    link_send("ERR ARM reason=mode");
+  } else if (!arg(args, "nonce", nonce, sizeof(nonce)) || !valid_nonce(nonce)) {
+    link_send("ERR ARM reason=nonce");
+  } else {
+    set_armed(nonce);
+    link_send("OK ARM");
+  }
+}
+
+// TYPE <hex>: the password, typed once inside the window an armed match
+// opened, then wiped along with the line that carried it.
+static void type_command(char *args) {
+  taskENTER_CRITICAL(&arm_lock);
+  bool open = type_until && esp_timer_get_time() < type_until;
+  type_until = 0;
+  taskEXIT_CRITICAL(&arm_lock);
+  uint8_t text[UNLOCK_MAX_TEXT];
+  typing_key_t keys[UNLOCK_MAX_KEYS];
+  size_t hex_len = strlen(args);
+  size_t len = hex_len / 2;
+  size_t count = 0;
+  const char *reason = NULL;
+  if (!open) reason = "window";
+  else if (hex_len % 2 || len > UNLOCK_MAX_TEXT || !hex_decode(args, text, len) ||
+           !(count = unlock_text_keys(text, len, keys))) reason = "text";
+  else if (!keyboard_type(keys, count)) reason = "keyboard";
+  memset(text, 0, sizeof(text));
+  memset(keys, 0, sizeof(keys));
+  memset(args, 0, hex_len);
+  if (reason) link_send("ERR TYPE reason=%s", reason);
+  else link_send("OK TYPE");
+}
+
 static void selftest(void) {
   char mac_hex[65];
   if (sign_identify(VECTOR_DEVICE_KEY, VECTOR_NONCE, VECTOR_SLOT, mac_hex) && strcmp(mac_hex, VECTOR_MAC) == 0) {
@@ -235,6 +322,24 @@ static void run_piv(bool reset) {
     finish("OK PIV identity=yes");
   }
   usb_rescan(700);
+}
+
+// The keyboard interface follows the unlock mode, and only a restart changes
+// what the board enumerates as; on probation, that restart would roll the
+// new image back.
+static void piv_mode_command(const char *value) {
+  unlock_mode_t mode;
+  bool restart;
+  if (!unlock_parse_mode(value, &mode)) {
+    link_send("ERR PIV reason=mode");
+  } else if ((restart = usb_has_keyboard() != (mode == UNLOCK_PASSWORD)) && fw_pending_verify()) {
+    link_send("ERR PIV reason=probation");
+  } else {
+    set_armed(NULL);
+    piv_set_unlock_mode(mode);
+    link_send("OK PIV mode=%s", unlock_mode_name(mode));
+    if (restart) usb_restart(700);
+  }
 }
 
 // FW BEGIN: new firmware can read everything the chip holds, so it takes a
@@ -550,9 +655,9 @@ static void handle(char *line) {
     submit(JOB_PAIR, "PAIR", args);
   } else if (strcmp(line, "PIV") == 0) {
     if (strcmp(args, "STATUS") == 0) {
-      link_send("OK PIV enabled=%s identity=%s pin=%s retries=%u flash=%s", piv_enabled() ? "yes" : "no",
+      link_send("OK PIV enabled=%s identity=%s pin=%s retries=%u flash=%s mode=%s", piv_enabled() ? "yes" : "no",
                 piv_has_identity() ? "yes" : "no", piv_pin_is_default() ? "default" : "set", piv_pin_retries(),
-                esp_flash_encryption_enabled() ? "encrypted" : "plain");
+                esp_flash_encryption_enabled() ? "encrypted" : "plain", unlock_mode_name(piv_unlock_mode()));
     } else if (strcmp(args, "ON") == 0 && !esp_flash_encryption_enabled()) {
       // A key readable from plain flash would make the device a stolen
       // credential (ADR-0013); the card stays off on such a board.
@@ -566,9 +671,15 @@ static void handle(char *line) {
       submit(JOB_PIV_GENKEY, "PIV", args);
     } else if (strcmp(args, "RESET") == 0) {
       submit(JOB_PIV_RESET, "PIV", args);
+    } else if (strncmp(args, "MODE ", 5) == 0) {
+      piv_mode_command(args + 5);
     } else {
       link_send("ERR PIV reason=unknown");
     }
+  } else if (strcmp(line, "ARM") == 0) {
+    arm_command(args);
+  } else if (strcmp(line, "TYPE") == 0) {
+    type_command(args);
   } else if (strcmp(line, "FW") == 0) {
     char sub[8], value[16];
     uint32_t offset;
@@ -664,6 +775,8 @@ static void console_task(void *arg_) {
       fw_mark_valid();
       connected_since = 0;
     }
+    // Whoever holds the link next arms the sensor afresh.
+    if (connected != was_connected) set_armed(NULL);
     if (connected && !was_connected) {
       vTaskDelay(pdMS_TO_TICKS(50));
       link_send("EVT READY fw=%s proto=%d", MACTOUCH_FW_VERSION, MACTOUCH_PROTOCOL_VERSION);

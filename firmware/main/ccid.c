@@ -150,7 +150,7 @@ static void handle(const ccid_message_t *msg) {
     reply_slot_status(msg->seq, CMD_FAILED | ICC_ABSENT, 0x05);  // slot does not exist
     return;
   }
-  if (!piv_enabled()) {
+  if (!piv_card_present()) {
     powered = false;
     handle_absent(msg);
     return;

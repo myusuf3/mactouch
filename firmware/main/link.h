@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Host link: newline-delimited text over USB CDC. See docs/PROTOCOL.md.
 void link_init(void);
@@ -8,3 +9,8 @@ void link_init(void);
 void link_send(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 // True while IDENTIFY, ENROLL or PAIR owns the sensor.
 bool link_busy(void);
+// Password mode (ADR-0022): whether the host has armed the sensor for a
+// password field, and how touch reports a match. An armed match is signed
+// against the host's nonce, disarms, and opens a short window for one TYPE.
+bool link_armed(void);
+void link_report_match(uint16_t slot, uint16_t score);
