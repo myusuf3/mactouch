@@ -22,6 +22,17 @@ import Testing
     #expect(Command.selftest.line == "SELFTEST")
   }
 
+  @Test func unlockModeAndArming() {
+    #expect(UnlockMode(rawValue: "pin") == .pin)
+    #expect(UnlockMode(rawValue: "password") == .password)
+    #expect(UnlockMode(rawValue: "touch") == nil)
+    #expect(Command.pivMode(.password).line == "PIV MODE password")
+    #expect(Command.pivMode(.pin).responseVerb == "PIV")
+    #expect(Command.arm(nonce: "00ff").line == "ARM nonce=00ff")
+    #expect(Command.arm(nonce: nil).line == "ARM off")
+    #expect(Command.type(password: "x").responseVerb == "TYPE")
+  }
+
   @Test func responseVerbs() {
     #expect(Command.ping.responseVerb == "PONG")
     #expect(Command.deleteAll.responseVerb == "DELETE")
