@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR-0022](0022-password-mode.md): password typing returns as an opt-in mode, gated on a password field having focus and on a signed match.
 
 ## Context
 

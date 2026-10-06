@@ -88,6 +88,25 @@ and never turn on smart card enforcement: pairing adds a way in and must never b
 wrong PINs block the card until `mactouch piv reset`. `mactouch doctor` has
 an `unlock` row for all of this.
 
+To have the sensor type your password instead, the way tinyTouch does,
+switch to password mode (ADR-0022):
+
+```
+mactouch password set         # checked against your account, kept in your keychain;
+                              # the first time, touch to release the sensor's key
+mactouch piv mode password    # the device restarts as a keyboard too
+mactouch piv mode pin         # back to the smart card
+```
+
+In password mode the lock screen shows your ordinary password field. Whenever
+a password field has focus, there or in any app, the ring breathes white;
+touch the sensor and it types your password and Return. A touch at any other
+time types nothing. After a restart, type the password once at the login
+window. An app that keeps secure input on, such as Terminal with Secure
+Keyboard Entry, counts as a password field while it has focus. macOS may show
+the Keyboard Setup Assistant the first time; close it. The Smart Card tab
+has the same switch as Unlock With.
+
 ### Firmware
 
 ```
@@ -206,9 +225,11 @@ print, gets in, exactly as with any consumer fingerprint sensor. The device
 key can be read from flash unless flash encryption is enabled; enable secure
 boot and flash encryption before relying on it for anything serious.
 
-By design there is no password typing and no smart card emulation. The
-approval primitive gates things you choose to gate; it does not replace your
-login password.
+Out of the box the device never types your password. The approval
+primitive gates things you choose to gate, and the smart card adds a way to
+unlock without replacing your login password. Password mode is the
+exception, by choice: it types the password, after a touch, into a focused
+password field.
 
 ## Troubleshooting
 
