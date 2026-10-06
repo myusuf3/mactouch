@@ -4,6 +4,24 @@ import MacTouchKit
 // mactouch piv pair|unpair: the Mac side of screen unlock, wrapping sc_auth.
 // Everything else under `piv` goes to the device.
 
+let pivUsage = "piv status|on|off|genkey|reset|mode pin|password|pair|unpair"
+
+/// `piv mode <pin|password>`.
+func unlockMode(_ args: [String]) throws -> UnlockMode {
+  guard args.count == 2, let mode = UnlockMode(rawValue: args[1]) else { throw fail("piv mode pin|password") }
+  return mode
+}
+
+/// From the terminal with echo off, so it never shows or reaches history.
+func readPassword() throws -> String {
+  var buffer = [CChar](repeating: 0, count: 256)
+  defer { _ = buffer.withUnsafeMutableBytes { memset_s($0.baseAddress, $0.count, 0, $0.count) } }
+  guard let read = readpassphrase("Your Mac password: ", &buffer, buffer.count, 0) else {
+    throw fail("cannot read a password here; run it in a terminal")
+  }
+  return String(cString: read)
+}
+
 func runPIVPair() throws -> Int32 {
   let card = try cardStatus()
   guard card["pin"] != "default" else {

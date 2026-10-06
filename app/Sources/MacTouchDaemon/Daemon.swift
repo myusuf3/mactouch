@@ -21,6 +21,15 @@ final class Daemon {
   var expiryTimer: DispatchSourceTimer?
   var monitors: Monitors!
 
+  // Password mode, PasswordMode.swift.
+  var unlockMode: UnlockMode = .pin
+  var arming = PasswordArming()
+  var passwordStored = Vault.read(.password) != nil
+  var deviceKey = Vault.read(.deviceKey)
+  let screen = ScreenLockMonitor()
+  var screenLocked = false
+  var fieldTimer: DispatchSourceTimer?
+
   init(socketPath: String) {
     server = ControlServer(path: socketPath)
   }
@@ -42,12 +51,14 @@ final class Daemon {
       self?.queue.async { self?.setLayer(layer, state) }
     }
     monitors.start()
+    startWatchingForPasswordFields()
 
     manager.onLog = { line in log(line) }
     manager.onConnect = { [weak self] device in self?.queue.async { self?.deviceConnected(device) } }
     manager.onDisconnect = { [weak self] in
       self?.queue.async {
         self?.applied = nil
+        self?.deviceForgotArming()
         self?.server.broadcast(ControlLine.evt("device", [("state", "absent")]))
       }
     }
@@ -61,6 +72,13 @@ final class Daemon {
           self?.applied = nil
           self?.applyRing()
         }
+        if name == "MATCH" { self?.passwordMatch(fields) }
+        // A wrong finger flashes the ring red and leaves it on the device's
+        // own colour; put the armed prompt back.
+        if name == "NOMATCH" {
+          self?.applied = nil
+          self?.applyRing()
+        }
       }
     }
     manager.start()
@@ -71,17 +89,20 @@ final class Daemon {
   private func deviceConnected(_ device: Device) {
     if ProcessInfo.processInfo.environment["MACTOUCH_DEBUG"] != nil {
       device.onRawLine = { log("< \($0)") }
-      device.onRawWrite = { log("> \($0)") }
+      device.onRawWrite = { log("> \($0.hasPrefix("TYPE ") ? "TYPE <password>" : $0)") }
     }
     if let status = try? device.request(.status), let idle = status["idle"].flatMap(LEDColour.init) {
       policy.idle = idle
     }
     applied = nil
     applyRing()
+    unlockMode = (try? device.request(.piv("STATUS")))?["mode"].flatMap(UnlockMode.init) ?? .pin
+    deviceForgotArming()
+    updateArming()
     server.broadcast(ControlLine.evt("device", [("state", "connected")]))
   }
 
-  private func setLayer(_ layer: RingLayer, _ state: RingState?) {
+  func setLayer(_ layer: RingLayer, _ state: RingState?) {
     if let state { policy.set(layer, state) } else { policy.clear(layer) }
     applyRing()
   }
@@ -89,7 +110,7 @@ final class Daemon {
   /// Sends the resolved state to the device when it differs from what the
   /// ring shows. Skipped while a long command owns the ring; re-run when it
   /// ends, because the device returns to its own idle colour then.
-  private func applyRing() {
+  func applyRing() {
     policy.dropExpired()
     scheduleExpiry()
     guard busy == nil, let device = manager.device else { return }
@@ -212,6 +233,20 @@ final class Daemon {
         return try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
       }
 
+    case "piv" where request.positional.first == "mode":
+      guard request.positional.count == 2, let mode = UnlockMode(rawValue: request.positional[1]) else { return fail("mode") }
+      passthrough(.pivMode(mode), verb, connection)
+      // A change of keyboard restarts the device, which reads the mode back
+      // on reconnecting; this covers a change that did not.
+      if let device = manager.device, let status = try? device.request(.piv("STATUS")),
+         let current = status["mode"].flatMap(UnlockMode.init) {
+        unlockMode = current
+        updateArming()
+      }
+
+    case "password":
+      passwordRequest(request, connection)
+
     case "piv":
       guard let sub = request.positional.first?.uppercased(), ["STATUS", "ON", "OFF", "GENKEY", "RESET"].contains(sub) else { return fail("value") }
       if sub == "STATUS" || sub == "ON" || sub == "OFF" {
@@ -247,6 +282,9 @@ final class Daemon {
     case "touch":
       guard let source = request.positional.first.flatMap(TouchSource.init) else { return fail("value") }
       passthrough(.touch(source), verb, connection)
+    case "cancel" where dismissArming():
+      reply()
+
     case "cancel":
       guard let device = manager.device else { return fail("device") }
       do {
@@ -288,7 +326,7 @@ final class Daemon {
 
   /// A command that waits on the user. Runs off the daemon queue; only one at
   /// a time. The ring belongs to the device until it finishes.
-  private func runLong(_ verb: String, _ connection: ControlConnection, timeout: TimeInterval,
+  func runLong(_ verb: String, _ connection: ControlConnection, timeout: TimeInterval,
                        _ body: @escaping (Device) throws -> Fields) {
     guard busy == nil else { return connection.send(ControlLine.err(verb, "busy")) }
     guard let device = manager.device else { return connection.send(ControlLine.err(verb, "device")) }
@@ -309,12 +347,13 @@ final class Daemon {
         // The device returns to its own idle colour after a long command.
         self.applied = nil
         self.applyRing()
+        self.updateArming()
       }
     }
   }
 }
 
-private func describe(_ error: Error) -> String {
+func describe(_ error: Error) -> String {
   if case DeviceError.rejected(_, let reason) = error { return reason }
   if case DeviceError.timeout = error { return "device_timeout" }
   if case DeviceError.disconnected = error { return "device" }
