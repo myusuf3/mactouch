@@ -75,3 +75,41 @@ import Testing
     #expect(ControlClient.isAvailable(at: path))
   }
 }
+
+@Suite struct ControlServers {
+  private func scratchPath() -> String {
+    NSTemporaryDirectory() + "mactouch-server-\(UUID().uuidString.prefix(8)).sock"
+  }
+
+  @Test func socketIsOwnerOnly() throws {
+    let server = ControlServer(path: scratchPath())
+    try server.start()
+    defer { server.stop() }
+    let mode = try #require(FileManager.default.attributesOfItem(atPath: server.path)[.posixPermissions] as? Int)
+    #expect(mode & 0o777 == 0o600)
+  }
+
+  /// Other threads keep making folders while servers start; every folder
+  /// must come out with the mode the process normally gives it.
+  @Test func startingLeavesOtherThreadsFilesAlone() throws {
+    let root = NSTemporaryDirectory() + "mactouch-umask-\(UUID().uuidString.prefix(8))"
+    try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let starting = DispatchGroup()
+    DispatchQueue.global().async(group: starting) {
+      for _ in 0..<200 {
+        let server = ControlServer(path: self.scratchPath())
+        try? server.start()
+        server.stop()
+      }
+    }
+    var modes: Set<Int> = []
+    while starting.wait(timeout: .now()) == .timedOut {
+      let folder = root + "/\(UUID().uuidString.prefix(8))"
+      try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: false)
+      let mode = try #require(FileManager.default.attributesOfItem(atPath: folder)[.posixPermissions] as? Int)
+      modes.insert(mode & 0o777)
+    }
+    #expect(modes.count == 1)
+  }
+}

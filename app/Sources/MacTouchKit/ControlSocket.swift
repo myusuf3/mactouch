@@ -64,12 +64,14 @@ public final class ControlServer {
     withUnsafeMutablePointer(to: &address.sun_path) {
       $0.withMemoryRebound(to: CChar.self, capacity: capacity) { _ = strncpy($0, path, capacity - 1) }
     }
-    let previous = umask(0o177)
     let bound = withUnsafePointer(to: &address) {
       $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listenFD, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
     }
-    umask(previous)
     guard bound == 0 else { throw ControlError.socket(errno) }
+    // chmod after bind rather than umask around it: umask is process-wide
+    // and would strip permissions from files other threads create meanwhile.
+    // The directory is owner-only, so nobody else reaches the socket first.
+    guard chmod(path, 0o600) == 0 else { throw ControlError.socket(errno) }
     guard listen(listenFD, 16) == 0 else { throw ControlError.socket(errno) }
 
     let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: queue)
