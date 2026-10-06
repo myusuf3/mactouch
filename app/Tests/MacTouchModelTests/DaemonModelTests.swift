@@ -55,6 +55,8 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
         received.append(request.line)
         connection.send(ControlLine.ok("piv"))
       }
+    case "password" where request.positional == ["status"]:
+      connection.send(ControlLine.ok("password", [("stored", "no")]))
     case "hello":
       received.hello()
       connection.send(ControlLine.ok("hello", [("proto", "1")]))
@@ -174,6 +176,8 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     #expect(model.smartCard?.encrypted == true)
     #expect(model.smartCard?.pinIsDefault == true)
     #expect(model.smartCard?.identity == false)
+    // This card's firmware predates the mode, so it can only take a PIN.
+    #expect(model.smartCard?.unlockMode == .pin)
 
     model.setSmartCard(enabled: false)
     try await waitUntil { received.all.contains("piv off") }
@@ -182,6 +186,63 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     try await waitUntil { model.request?.kind == "piv" }
     server.broadcast(ControlLine.evt("piv", [("state", "done"), ("result", "match")]))
     try await waitUntil { model.request == nil }
+  }
+
+  @Test @MainActor func savesThePasswordThenSwitchesToPasswordMode() async throws {
+    let received = Received()
+    let mode = Received()
+    mode.append("pin")
+    let stored = Received()
+    stored.append("no")
+    let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-mode-\(UUID().uuidString.prefix(8)).sock")
+    server.handler = { request, connection in
+      switch request.verb {
+      case "events": connection.subscribed = true; connection.send(ControlLine.evt("device", [("state", "connected")]))
+      case "piv" where request.positional == ["status"]:
+        connection.send(ControlLine.ok("piv", [("enabled", "yes"), ("identity", "yes"), ("pin", "set"), ("retries", "3"),
+                                               ("flash", "encrypted"), ("mode", mode.all.last!)]))
+      case "piv" where request.positional.first == "mode":
+        received.append(request.line)
+        mode.append(request.positional.last!)
+        connection.send(ControlLine.ok("piv", [("mode", request.positional.last!)]))
+      case "password" where request.positional == ["status"]:
+        connection.send(ControlLine.ok("password", [("stored", stored.all.last!)]))
+      case "password":
+        received.append(request.line)
+        if request.positional == ["set"], request["hex"] != "7269676874" {
+          connection.send(ControlLine.err("password", "wrong"))
+        } else {
+          stored.append(request.positional == ["set"] ? "yes" : "no")
+          connection.send(ControlLine.ok("password"))
+        }
+      default: connection.send(ControlLine.ok(request.verb))
+      }
+    }
+    try server.start()
+    defer { server.stop() }
+
+    let model = DaemonModel(path: server.path)
+    model.refreshSmartCard()
+    try await waitUntil { model.smartCard?.passwordStored == false }
+    #expect(model.smartCard?.unlockMode == .pin)
+
+    model.savePassword("typo", thenUse: true)
+    #expect(model.smartCardAction == "save")
+    try await waitUntil { model.smartCardAction == nil }
+    #expect(model.smartCardError == "That is not your Mac password.")
+    #expect(model.smartCard?.unlockMode == .pin)
+
+    model.savePassword("right", thenUse: true)
+    try await waitUntil { model.smartCardAction == nil && model.smartCard?.unlockMode == .password }
+    #expect(model.smartCardError == nil)
+    #expect(model.smartCard?.passwordStored == true)
+
+    model.forgetPassword()
+    try await waitUntil { model.smartCard?.passwordStored == false }
+    model.setUnlockMode(.pin)
+    try await waitUntil { model.smartCardAction == nil && model.smartCard?.unlockMode == .pin }
+    #expect(received.all == ["password set hex=7479706f", "password set hex=7269676874", "piv mode password",
+                             "password clear", "piv mode pin"])
   }
 
   @Test(.timeLimit(.minutes(1))) @MainActor func updatesFirmwareFromTheBundledImage() async throws {

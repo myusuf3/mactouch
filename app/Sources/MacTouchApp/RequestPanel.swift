@@ -102,8 +102,9 @@ struct RequestView: View {
         .contentTransition(.opacity)
         .animation(.smooth, value: noMatches)
       // The card cannot be interrupted once it waits; the host gives up
-      // on its own when the wait ends.
-      if kind == "plain" || kind == "nonce" {
+      // on its own when the wait ends. Cancelling a password request leaves
+      // that field to be typed by hand.
+      if kind == "plain" || kind == "nonce" || kind == "password" {
         Button(action: cancel) {
           Text("Cancel").frame(maxWidth: .infinity)
         }
@@ -121,6 +122,7 @@ struct RequestView: View {
     switch kind {
     case "nonce": return "Authentication Request"
     case "piv": return "Smart Card Sign-In"
+    case "password": return "Password Requested"
     case "firmware": return "Firmware Update"
     default: return "Fingerprint Requested"
     }
