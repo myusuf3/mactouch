@@ -92,6 +92,11 @@ public final class DaemonModel: ObservableObject {
   /// password, or the unlock mode being switched to, "pin" or "password".
   @Published public private(set) var smartCardAction: String?
   @Published public private(set) var smartCardError: String?
+  /// The apps and sites given a password, ADR-0023; nil until read.
+  @Published public private(set) var passwordTargets: [PasswordTarget]?
+  /// Whether mactouchd may read browser addresses, which site passwords need.
+  @Published public private(set) var browserAccessAllowed: Bool?
+  @Published public private(set) var targetError: String?
   /// The board's firmware version and the slot it runs from.
   @Published public private(set) var firmware: String?
   @Published public private(set) var slot: String?
@@ -431,6 +436,60 @@ public final class DaemonModel: ObservableObject {
       message = message[..<status.lowerBound]
     }
     return String(message)
+  }
+
+  // MARK: app and site passwords
+
+  public func refreshPasswordTargets() {
+    requests.async { [weak self] in self?.loadPasswordTargets() }
+  }
+
+  /// `password` is the target's own, nil to keep the one already saved or
+  /// when it uses the Mac password.
+  public func savePasswordTarget(_ target: PasswordTarget, password: String?) {
+    var values = ["kind": target.kind.rawValue, "id": target.id, "uses": target.uses.rawValue]
+    if let password { values["hex"] = Data(password.utf8).map { String(format: "%02x", $0) }.joined() }
+    changeTargets(ControlRequest(verb: "target", positional: ["set"], values: values))
+  }
+
+  public func removePasswordTarget(_ target: PasswordTarget) {
+    changeTargets(ControlRequest(verb: "target", positional: ["remove"], values: ["kind": target.kind.rawValue, "id": target.id]))
+  }
+
+  private func changeTargets(_ request: ControlRequest) {
+    requests.async { [weak self] in
+      guard let self else { return }
+      var failure: String?
+      do {
+        let client = try ControlClient(path: path)
+        defer { client.close() }
+        _ = try client.request(request)
+      } catch {
+        failure = Self.targetFailure(describe(error))
+      }
+      publish { $0.targetError = failure }
+      loadPasswordTargets()
+    }
+  }
+
+  static func targetFailure(_ reason: String) -> String {
+    switch reason {
+    case "builtin": return "That app always gets your Mac password."
+    case "site": return "Enter the site's host name as the address bar shows it, like github.com."
+    case "password": return "Enter the password for it."
+    default: return smartCardFailure(reason)
+    }
+  }
+
+  private func loadPasswordTargets() {
+    guard let client = try? ControlClient(path: path) else { return }
+    defer { client.close() }
+    guard let reply = try? client.request(ControlRequest(verb: "targets")),
+          let list = reply["list"].flatMap({ try? PasswordTarget.decode($0) }) else { return }
+    publish { model in
+      model.passwordTargets = list
+      model.browserAccessAllowed = reply["accessibility"] == "yes"
+    }
   }
 
   /// The daemon's reasons, as sentences for the pane.

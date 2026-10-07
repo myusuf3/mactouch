@@ -245,6 +245,63 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
                              "password clear", "piv mode pin"])
   }
 
+  @Test @MainActor func managesAppAndSitePasswords() async throws {
+    final class Targets: @unchecked Sendable {
+      private let lock = NSLock()
+      private var list: [PasswordTarget] = []
+      var all: [PasswordTarget] { lock.lock(); defer { lock.unlock() }; return list }
+      func replace(_ change: (inout [PasswordTarget]) -> Void) { lock.lock(); change(&list); lock.unlock() }
+    }
+    let received = Received()
+    let targets = Targets()
+    let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-targets-\(UUID().uuidString.prefix(8)).sock")
+    server.handler = { request, connection in
+      switch request.verb {
+      case "targets":
+        connection.send(ControlLine.ok("targets", [("list", PasswordTarget.encode(targets.all)), ("accessibility", "no")]))
+      case "target":
+        received.append(request.line)
+        let kind = PasswordTarget.Kind(rawValue: request["kind"] ?? "") ?? .app
+        let id = request["id"] ?? ""
+        if id == "com.apple.Terminal" { return connection.send(ControlLine.err("target", "builtin")) }
+        targets.replace { list in
+          list.removeAll { $0.kind == kind && $0.id == id }
+          if request.positional == ["set"] {
+            list.append(PasswordTarget(kind: kind, id: id, uses: PasswordTarget.Source(rawValue: request["uses"] ?? "") ?? .mac))
+          }
+        }
+        connection.send(ControlLine.ok("target"))
+      default: connection.send(ControlLine.ok(request.verb))
+      }
+    }
+    try server.start()
+    defer { server.stop() }
+
+    let model = DaemonModel(path: server.path)
+    model.refreshPasswordTargets()
+    try await waitUntil { model.passwordTargets == [] }
+    #expect(model.browserAccessAllowed == false)
+
+    let github = PasswordTarget(kind: .site, id: "github.com", uses: .own)
+    model.savePasswordTarget(github, password: "s3cret")
+    try await waitUntil { model.passwordTargets == [github] }
+    let zoom = PasswordTarget(kind: .app, id: "us.zoom.xos", uses: .mac)
+    model.savePasswordTarget(zoom, password: nil)
+    try await waitUntil { model.passwordTargets == [github, zoom] }
+
+    model.savePasswordTarget(PasswordTarget(kind: .app, id: "com.apple.Terminal", uses: .own), password: "x")
+    try await waitUntil { model.targetError != nil }
+    #expect(model.targetError == "That app always gets your Mac password.")
+
+    model.removePasswordTarget(github)
+    try await waitUntil { model.passwordTargets == [zoom] }
+    #expect(model.targetError == nil)
+    #expect(received.all == ["target set hex=733363726574 id=github.com kind=site uses=own",
+                             "target set id=us.zoom.xos kind=app uses=mac",
+                             "target set hex=78 id=com.apple.Terminal kind=app uses=own",
+                             "target remove id=github.com kind=site"])
+  }
+
   @Test(.timeLimit(.minutes(1))) @MainActor func updatesFirmwareFromTheBundledImage() async throws {
     var bytes = [UInt8](repeating: 0, count: 400)
     bytes[0] = 0xE9
