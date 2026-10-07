@@ -6,11 +6,12 @@ import Foundation
 public struct PasswordArming {
   public struct Inputs: Equatable {
     public var mode: UnlockMode
+    /// Whether the password `field` takes is in the keychain.
     public var passwordStored: Bool
-    /// Who has a password field focused, nil when nothing does.
-    public var field: String?
+    /// The focused password field, nil when nothing applies.
+    public var field: PasswordField?
 
-    public init(mode: UnlockMode, passwordStored: Bool, field: String?) {
+    public init(mode: UnlockMode, passwordStored: Bool, field: PasswordField?) {
       self.mode = mode
       self.passwordStored = passwordStored
       self.field = field
@@ -18,12 +19,12 @@ public struct PasswordArming {
   }
 
   public enum Change: Equatable {
-    case arm(nonce: String, field: String)
+    case arm(nonce: String, field: PasswordField)
     case disarm
   }
 
   public enum Outcome: Equatable {
-    case type(field: String)
+    case type(field: PasswordField)
     /// The match was signed, but not by this device for this nonce.
     case reject
     /// Not armed, or not signed: a match for something else.
@@ -31,9 +32,9 @@ public struct PasswordArming {
   }
 
   private let nonce: () -> String
-  private var armed: (nonce: String, field: String)?
+  private var armed: (nonce: String, field: PasswordField)?
   /// A field the user cancelled; it stays unarmed until focus moves on.
-  private var dismissed: String?
+  private var dismissed: PasswordField?
 
   public init(nonce: @escaping () -> String = PasswordArming.randomNonce) {
     self.nonce = nonce
