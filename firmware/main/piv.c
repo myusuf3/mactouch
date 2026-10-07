@@ -120,6 +120,7 @@ static slot_t auth_slot = {.key_name = "key9a", .cert_name = "cert9a", .common_n
 static slot_t key_mgmt_slot = {.key_name = "key9d", .cert_name = "cert9d", .common_name = "CN=mactouch PIV Key Management", .key_management = true};
 static bool identity_loaded;
 static bool enabled;
+static unlock_mode_t unlock_mode = UNLOCK_PIN;
 static const uint8_t default_pin[PIN_LEN] = {'1', '2', '3', '4', '5', '6', 0xFF, 0xFF};
 static uint8_t pin[PIN_LEN];
 static uint8_t retries = PIN_RETRIES;
@@ -261,6 +262,14 @@ void piv_set_enabled(bool on) {
 }
 bool piv_pin_is_default(void) { return memcmp(pin, default_pin, sizeof(pin)) == 0; }
 uint8_t piv_pin_retries(void) { return retries; }
+bool piv_card_present(void) { return enabled && unlock_mode == UNLOCK_PIN; }
+unlock_mode_t piv_unlock_mode(void) { return unlock_mode; }
+
+void piv_set_unlock_mode(unlock_mode_t mode) {
+  unlock_mode = mode;
+  nvs_set_u8(store, "mode", (uint8_t)mode);
+  nvs_commit(store);
+}
 
 bool piv_generate_identity(void) {
   xSemaphoreTake(lock, portMAX_DELAY);
@@ -285,6 +294,7 @@ void piv_reset_identity(void) {
   load_identity();
   load_pin();
   enabled = false;
+  unlock_mode = UNLOCK_PIN;
   pin_verified = false;
   xSemaphoreGive(lock);
   ESP_LOGI(TAG, "identity reset");
@@ -635,5 +645,8 @@ void piv_init(void) {
   load_pin();
   uint8_t on;
   enabled = nvs_get_u8(store, "on", &on) == ESP_OK && on;
-  ESP_LOGI(TAG, "card %s, %s", enabled ? "on" : "off", identity_loaded ? "identity present" : "no identity");
+  uint8_t mode;
+  unlock_mode = nvs_get_u8(store, "mode", &mode) == ESP_OK && mode == UNLOCK_PASSWORD ? UNLOCK_PASSWORD : UNLOCK_PIN;
+  ESP_LOGI(TAG, "card %s, %s, unlock by %s", enabled ? "on" : "off", identity_loaded ? "identity present" : "no identity",
+           unlock_mode_name(unlock_mode));
 }

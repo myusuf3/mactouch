@@ -5,7 +5,7 @@ import Testing
 @Suite struct HealthReports {
   /// A daemon that answers `status` with the given fields and `selftest` as told.
   private func fakeDaemon(status: [(String, String)], selftestFails: String? = nil,
-                          piv: [(String, String)] = []) throws -> ControlServer {
+                          piv: [(String, String)] = [], password: [(String, String)] = []) throws -> ControlServer {
     let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-health-\(UUID().uuidString.prefix(8)).sock")
     server.handler = { request, connection in
       switch request.verb {
@@ -14,6 +14,7 @@ import Testing
         if let reason = selftestFails { connection.send(ControlLine.err("selftest", reason)) }
         else { connection.send(ControlLine.ok("selftest")) }
       case "piv": connection.send(ControlLine.ok("piv", piv))
+      case "password": connection.send(ControlLine.ok("password", password))
       default: connection.send(ControlLine.err(request.verb, "unknown"))
       }
     }
@@ -78,9 +79,11 @@ import Testing
     #expect(seen["sensor"] == .off)
   }
 
-  private func unlockRow(piv: String, pin: String, identities: SmartCardIdentities?) throws -> HealthCheck? {
+  private func unlockRow(piv: String, pin: String, mode: String? = nil, passwordStored: Bool = false,
+                         identities: SmartCardIdentities?) throws -> HealthCheck? {
     let server = try fakeDaemon(status: [("device", "connected"), ("piv", piv)],
-                                piv: [("enabled", "yes"), ("identity", "yes"), ("pin", pin)])
+                                piv: [("enabled", "yes"), ("identity", "yes"), ("pin", pin)] + (mode.map { [("mode", $0)] } ?? []),
+                                password: [("stored", passwordStored ? "yes" : "no")])
     defer { server.stop() }
     return HealthReport.viaDaemon(at: server.path, identities: { identities }).checks.first { $0.name == "unlock" }
   }
@@ -92,6 +95,24 @@ import Testing
     #expect(try unlockRow(piv: "none", pin: "set", identities: nil)?.verdict == .warn)
     #expect(try unlockRow(piv: "identity", pin: "set", identities: unpaired)?.detail.contains("piv pair") == true)
     #expect(try unlockRow(piv: "identity", pin: "set", identities: paired)?.verdict == .ok)
+  }
+
+  @Test func unlockRowSaysWhatTheLockScreenTakes() throws {
+    let paired = SmartCardIdentities(paired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
+    #expect(try unlockRow(piv: "identity", pin: "set", mode: "pin", identities: paired)?.detail
+            == "smart card paired; PIN then touch unlocks")
+    // Firmware from before the mode existed only does PIN then touch.
+    #expect(try unlockRow(piv: "identity", pin: "set", identities: paired)?.detail
+            == "smart card paired; PIN then touch unlocks")
+  }
+
+  @Test func passwordModeIsAboutThePasswordNotTheCard() throws {
+    let ready = try unlockRow(piv: "off", pin: "default", mode: "password", passwordStored: true, identities: nil)
+    #expect(ready?.verdict == .ok)
+    #expect(ready?.detail == "password mode; a touch types your password into password fields")
+    let missing = try unlockRow(piv: "identity", pin: "set", mode: "password", passwordStored: false, identities: nil)
+    #expect(missing?.verdict == .warn)
+    #expect(missing?.detail == "password mode but no password saved; mactouch password set")
   }
 
   @Test func defaultPINWarnsEvenWhenPaired() throws {

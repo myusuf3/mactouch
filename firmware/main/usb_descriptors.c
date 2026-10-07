@@ -7,14 +7,18 @@
 #define USB_VID 0x303a  // Espressif
 #define USB_PID 0x4d54  // "MT"
 
-enum { ITF_NUM_CDC = 0, ITF_NUM_CDC_DATA, ITF_NUM_CCID, ITF_NUM_TOTAL };
+// The keyboard comes last so the other interfaces keep their numbers in
+// both configurations.
+enum { ITF_NUM_CDC = 0, ITF_NUM_CDC_DATA, ITF_NUM_CCID, ITF_NUM_HID };
 #define EPNUM_CDC_NOTIF 0x81
 #define EPNUM_CDC_OUT 0x02
 #define EPNUM_CDC_IN 0x82
 #define EPNUM_CCID_OUT 0x03
 #define EPNUM_CCID_IN 0x83
+#define EPNUM_HID_IN 0x84
 #define CCID_DESC_LEN (9 + CCID_CLASS_DESC_LEN + 7 + 7)
 #define CONFIG_TOTAL_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + CCID_DESC_LEN)
+#define KEYBOARD_CONFIG_TOTAL_LEN (CONFIG_TOTAL_LEN + TUD_HID_DESC_LEN)
 
 // Smart card reader interface: class 0x0B, the CCID class descriptor, and
 // two bulk endpoints. One slot, no interrupt endpoint because the card is
@@ -51,9 +55,19 @@ const tusb_desc_device_t mactouch_device_descriptor = {
 };
 
 const uint8_t mactouch_configuration_descriptor[] = {
-  TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, 0, 100),
+  TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_HID, 0, CONFIG_TOTAL_LEN, 0, 100),
   TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
   CCID_DESCRIPTOR(ITF_NUM_CCID, 5, EPNUM_CCID_OUT, EPNUM_CCID_IN, 64),
+};
+
+const uint8_t mactouch_keyboard_report_descriptor[] = {TUD_HID_REPORT_DESC_KEYBOARD()};
+
+const uint8_t mactouch_keyboard_configuration_descriptor[] = {
+  TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_HID + 1, 0, KEYBOARD_CONFIG_TOTAL_LEN, 0, 100),
+  TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 4, EPNUM_CDC_NOTIF, 8, EPNUM_CDC_OUT, EPNUM_CDC_IN, 64),
+  CCID_DESCRIPTOR(ITF_NUM_CCID, 5, EPNUM_CCID_OUT, EPNUM_CCID_IN, 64),
+  TUD_HID_DESCRIPTOR(ITF_NUM_HID, 6, HID_ITF_PROTOCOL_KEYBOARD, sizeof(mactouch_keyboard_report_descriptor),
+                     EPNUM_HID_IN, 8, 10),
 };
 
 static char serial[20] = "MT-UNKNOWN";
@@ -65,6 +79,7 @@ const char *mactouch_string_descriptors[] = {
   serial,
   "mactouch link",
   "mactouch smart card",
+  "mactouch keyboard",
 };
 
 const int mactouch_string_descriptor_count =

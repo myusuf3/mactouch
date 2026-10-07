@@ -25,6 +25,7 @@ public struct HealthReport: Sendable {
     var status: Fields?
     var selftest: Result<Void, Error>?
     var piv: Fields?
+    var password: Fields?
     do {
       let client = try ControlClient(path: path)
       defer { client.close() }
@@ -33,12 +34,17 @@ public struct HealthReport: Sendable {
       if status?["device"] == "connected" {
         selftest = Result { _ = try client.request(ControlRequest(verb: "selftest")) }
         if status?["piv"] != nil { piv = try? client.request(ControlRequest(verb: "piv", positional: ["status"])) }
+        if piv?["mode"] == UnlockMode.password.rawValue {
+          password = try? client.request(ControlRequest(verb: "password", positional: ["status"]))
+        }
       }
     } catch {
       checks.append(HealthCheck(.bad, "daemon", "socket present but not answering (\(error)); scripts/daemon.sh restart"))
     }
     checks.append(deviceCheck(connected: status?["device"] == "connected", firmware: status?["fw"]))
-    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv, identities: identities))
+    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv,
+                                                      passwordStored: password.map { $0["stored"] == "yes" },
+                                                      identities: identities))
   }
 
   /// Asks the device over its serial port. `daemonSkipped` says the caller
@@ -65,10 +71,12 @@ public struct HealthReport: Sendable {
     } catch {
       checks.append(HealthCheck(.bad, "device", "\(error); replug the board"))
     }
-    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv, identities: SmartCardIdentities.current))
+    return HealthReport(checks: checks + statusChecks(status, selftest: selftest, piv: piv, passwordStored: nil,
+                                                      identities: SmartCardIdentities.current))
   }
 
-  private static func statusChecks(_ status: Fields?, selftest: Result<Void, Error>?, piv: Fields?,
+  /// `passwordStored` is nil when there was no daemon to ask.
+  private static func statusChecks(_ status: Fields?, selftest: Result<Void, Error>?, piv: Fields?, passwordStored: Bool?,
                                    identities: () -> SmartCardIdentities?) -> [HealthCheck] {
     var checks: [HealthCheck] = []
 
@@ -96,7 +104,11 @@ public struct HealthReport: Sendable {
         : HealthCheck(.warn, "fingers", "none enrolled; mactouch enroll 1"))
     }
 
-    if let state = status?["piv"] { checks.append(pivCheck(state, pinIsDefault: piv?["pin"] == "default", identities: identities)) }
+    if piv?["mode"] == UnlockMode.password.rawValue {
+      checks.append(passwordCheck(stored: passwordStored))
+    } else if let state = status?["piv"] {
+      checks.append(pivCheck(state, pinIsDefault: piv?["pin"] == "default", identities: identities))
+    }
     return checks
   }
 
@@ -122,6 +134,16 @@ public struct HealthReport: Sendable {
     if !identities.paired.isEmpty { return HealthCheck(.ok, "unlock", "smart card paired; PIN then touch unlocks") }
     if !identities.unpaired.isEmpty { return HealthCheck(.warn, "unlock", "identity ready, not paired; mactouch piv pair") }
     return HealthCheck(.warn, "unlock", "identity ready but macOS does not list it; replug the device")
+  }
+
+  /// Password mode, ADR-0022: the card is hidden, so what matters is
+  /// whether there is a password to type.
+  private static func passwordCheck(stored: Bool?) -> HealthCheck {
+    switch stored {
+    case true?: return HealthCheck(.ok, "unlock", "password mode; a touch types your password into password fields")
+    case false?: return HealthCheck(.warn, "unlock", "password mode but no password saved; mactouch password set")
+    case nil: return HealthCheck(.off, "unlock", "password mode; the saved password is only known to mactouchd")
+    }
   }
 
   private static func autostartCheck() -> HealthCheck {

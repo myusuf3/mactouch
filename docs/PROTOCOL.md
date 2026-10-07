@@ -29,9 +29,12 @@ Every command gets exactly one response line, `OK <VERB> ...` or
 | `WATCH on\|off` | `OK WATCH` | on: every touch runs an identify and emits `EVT MATCH` or `EVT NOMATCH`. Default off. |
 | `TOUCH pin\|poll` | `OK TOUCH` | presence source. `poll` asks the sensor for an image every 150 ms and works with no TouchOut wire. Persisted. |
 | `PAIR` | `OK PAIR key=<hex64>` or `ERR PAIR reason=...` | returns the device key once per boot, after a fingerprint match. Used by the PAM install. |
-| `PIV STATUS` | `OK PIV enabled=yes\|no identity=yes\|no pin=default\|set retries=N` | the smart card side, docs/PIV.md |
+| `PIV STATUS` | `OK PIV enabled=yes\|no identity=yes\|no pin=default\|set retries=N flash=encrypted\|plain mode=pin\|password` | the smart card side, docs/PIV.md |
 | `PIV ON` / `PIV OFF` | `OK PIV enabled=yes\|no` | persisted, off by default. Off, the reader reports an empty slot. Followed by a USB re-enumeration. |
 | `PIV GENKEY` / `PIV RESET` | `OK PIV identity=yes\|no` or `ERR PIV reason=exists\|timeout\|cancelled\|sensor\|failed` | long-running, after a fingerprint match. GENKEY makes the P-256 keys and certificates on the device; RESET destroys them and restores the default PIN. Either is followed by a USB re-enumeration so the host re-reads the card. |
+| `PIV MODE pin\|password` | `OK PIV mode=pin\|password` or `ERR PIV reason=mode\|probation` | how the Mac is unlocked (ADR-0022). Persisted, `pin` by default, back to `pin` on `PIV RESET`. In `password` mode the reader reports no card and the board adds a keyboard interface, so a switch that adds or removes it restarts the device after the reply; refused with `probation` while a new image has not confirmed itself. |
+| `ARM nonce=<hex32>` / `ARM off` | `OK ARM` or `ERR ARM reason=mode\|nonce` | password mode: the host has a password field focused. The next touch runs a match and reports `EVT MATCH ... mac=` signed over the nonce, then disarms. Forgotten whenever the link opens or closes. |
+| `TYPE <hex>` | `OK TYPE` or `ERR TYPE reason=window\|text\|keyboard` | types the UTF-8 hex-encoded text and Return, once, within 5 seconds of an armed match; printable ASCII, up to 64 characters, US layout. The line is wiped after. |
 | `REBOOT` | `OK REBOOT` | |
 | `FW BEGIN size=<n> sha256=<hex64>` | `OK FW state=writing next=0` or `ERR FW reason=timeout\|cancelled\|sensor\|busy\|layout\|size\|sha256\|begin` | long-running: waits for a fingerprint with the ring breathing white, then erases the spare slot (ADR-0018). |
 | `FW WRITE off=<n> data=<base64>` | `OK FW next=<n>` or `ERR FW reason=offset\|data\|write\|inactive` | up to 168 bytes per line, in order. Any error aborts the update. |
@@ -60,7 +63,7 @@ response.
 | `EVT TOUCH state=down\|up` | presence edge |
 | `EVT TAP count=N` | 300 ms after the last lift of a short-touch sequence |
 | `EVT HOLD` | touch held 800 ms, once per touch |
-| `EVT MATCH slot=N score=S` | watch mode, or an identify attempt succeeded |
+| `EVT MATCH slot=N score=S [mac=<hex64>]` | watch mode, an identify attempt succeeded, or an armed touch matched; `mac` is the identify signature over the `ARM` nonce |
 | `EVT NOMATCH` | a finger was read but matched no template |
 | `EVT ENROLL step=touch\|lift\|touch_again\|processing` | enrolment progress |
 | `EVT PIV state=pending` / `EVT PIV state=done result=match\|timeout\|sensor\|busy` | the smart card is waiting for a finger before it signs, and how that ended. The ring breathes white meanwhile. |
@@ -109,11 +112,17 @@ are one at a time and a second gets `err ... reason=busy`.
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
 | `piv status\|on\|off\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
+| `piv mode pin\|password` | as device |
+| `password status\|clear` | `ok password stored=yes\|no`, `ok password` |
+| `targets` | `ok targets list=<base64 of JSON> accessibility=yes\|no`: the apps and sites given a password, ADR-0023, each `{"kind":"app"\|"site","id":…,"uses":"mac"\|"own"}` |
+| `target set kind=app\|site id=<bundle-id\|host> uses=mac\|own [hex=<utf-8 as hex>]` | `ok target` or `err target reason=value\|builtin\|site\|password\|characters\|keychain`. `hex` is the target's own password, required the first time it uses one |
+| `target remove kind=app\|site id=…` | `ok target`; its own password is deleted too |
+| `password set hex=<utf-8 as hex>` | `ok password` or `err password reason=value\|characters\|wrong\|key_released\|keychain\|...`. Checks it against the account and keeps it in mactouchd's keychain; the first time, a long command that takes the device key with `PAIR` |
 | `fw begin\|write\|end\|abort [key=value ...]` | as device; `begin` is a long command |
-| `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled` |
+| `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled`. While password mode is armed it disarms instead, until focus moves to another field |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |
-| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent`, `evt ring state=<mode>:<colour>` and, around every identify, `evt request state=pending kind=plain\|nonce reason=<text>` then `evt request state=done kind=...` |
+| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent`, `evt ring state=<mode>:<colour>` and, around every identify and every armed password field, `evt request state=pending kind=plain\|nonce\|password reason=<text>` then `evt request state=done kind=...` |
 
 `identify` from the socket posts a macOS notification with the reason text so
 the user knows what they are approving, unless a `hello ui=1` client is

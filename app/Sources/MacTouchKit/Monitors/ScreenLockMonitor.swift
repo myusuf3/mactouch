@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Reports when the screen locks and unlocks. Needs the main run loop, which
@@ -21,6 +22,13 @@ public final class ScreenLockMonitor {
         self?.onChange?(false)
       },
     ]
+  }
+
+  /// Whether this session's screen is locked now, for a process that starts
+  /// while it is: the notifications only report changes.
+  public static func sessionIsLocked() -> Bool {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+    return session["CGSSessionScreenIsLocked"] as? Bool ?? false
   }
 
   public func stop() {

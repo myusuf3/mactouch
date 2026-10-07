@@ -21,8 +21,9 @@ ring breathes, holding the host off with CCID time extensions; without a
 finger it fails. So touch then PIN and PIN then touch both work. The PIN
 stays a real PIN that the user types and the card verifies. tinyTouch instead
 fixes the PIN and types it itself over a USB keyboard interface once the
-finger matches; this project has no keyboard (ADR-0006) and wants two
-factors (ADR-0013), so the PIN is real.
+finger matches; this card wants two factors (ADR-0013), so the PIN is real.
+Password mode (ADR-0022) is the one-touch alternative: it hides the card
+and types the account password instead.
 
 ## What was checked on this Mac (macOS 26.6.2)
 

@@ -88,6 +88,40 @@ and never turn on smart card enforcement: pairing adds a way in and must never b
 wrong PINs block the card until `mactouch piv reset`. `mactouch doctor` has
 an `unlock` row for all of this.
 
+To have the sensor type your password instead, the way tinyTouch does,
+switch to password mode (ADR-0022):
+
+```
+mactouch password set         # checked against your account, kept in your keychain;
+                              # the first time, touch to release the sensor's key
+mactouch piv mode password    # the device restarts as a keyboard too
+mactouch piv mode pin         # back to the smart card
+```
+
+In password mode the lock screen shows your ordinary password field. When a
+password field that has a password has focus, the ring breathes white; touch
+the sensor and it types that password and Return. A touch at any other time
+types nothing. After a restart, type the password once at the login window.
+macOS may show the Keyboard Setup Assistant the first time; close it. The
+Smart Card tab has the same switch as Unlock With.
+
+Which password a field gets follows what is asking (ADR-0023). The lock
+screen, system prompts and the common terminals always get your Mac
+password. Other apps and websites get one only once you add them, in the
+Passwords tab or here:
+
+```
+mactouch password add app us.zoom.xos --mac   # Zoom gets your Mac password
+mactouch password add site github.com         # asks for github.com's own password
+mactouch password list
+mactouch password remove site github.com
+```
+
+Sites match the exact host in the browser's address bar, read through
+Accessibility, so allow mactouchd there when macOS asks. A terminal with
+Secure Keyboard Entry on counts as a password field the whole time it has
+focus.
+
 ### Firmware
 
 ```
@@ -206,9 +240,11 @@ print, gets in, exactly as with any consumer fingerprint sensor. The device
 key can be read from flash unless flash encryption is enabled; enable secure
 boot and flash encryption before relying on it for anything serious.
 
-By design there is no password typing and no smart card emulation. The
-approval primitive gates things you choose to gate; it does not replace your
-login password.
+Out of the box the device never types your password. The approval
+primitive gates things you choose to gate, and the smart card adds a way to
+unlock without replacing your login password. Password mode is the
+exception, by choice: it types the password, after a touch, into a focused
+password field.
 
 ## Troubleshooting
 

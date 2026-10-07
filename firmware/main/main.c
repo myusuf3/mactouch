@@ -26,7 +26,7 @@ void app_main(void) {
   led_init();
   piv_init();
   ccid_init();
-  usb_init();
+  usb_init(piv_unlock_mode() == UNLOCK_PASSWORD);
   link_init();
   touch_init();
 #ifdef MACTOUCH_CRASH_TEST

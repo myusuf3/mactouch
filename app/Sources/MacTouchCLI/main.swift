@@ -28,6 +28,13 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   pair [--timeout SECONDS]        print the device key (once per boot, needs a touch)
   piv status|on|off               the smart card for screen unlock (off by default)
   piv genkey|reset                make or destroy its identity; both need a touch
+  piv mode pin|password           unlock with the smart card's PIN then a touch, or with
+                                  your password, typed by the sensor after a touch
+  password set|clear|status       your Mac password, which password mode types (needs mactouchd)
+  password list                   which apps and sites get which password
+  password add app <bundle-id> [--mac] | site <host> [--mac]
+                                  give one its own password, asked for, or your Mac password
+  password remove app <bundle-id> | site <host>
   piv pair|unpair                 pair the card with your account through sc_auth
   firmware version|update [IMAGE] the board's firmware over the link, after a touch
                                   (IMAGE defaults to the one MacTouch.app carries)
@@ -109,8 +116,18 @@ func runViaDaemon(_ command: [String]) throws -> Int32 {
     request.positional = args
   case "idle", "watch", "touch", "monitor":
     request.positional = args
+  case "piv" where args.first == "mode":
+    request.positional = ["mode", try unlockMode(args).rawValue]
+  case "password":
+    guard let sub = args.first, ["status", "set", "clear"].contains(sub) else { throw fail("password set|clear|status") }
+    request.positional = [sub]
+    if sub == "set" {
+      request.values["hex"] = Data(try readPassword().utf8).map { String(format: "%02x", $0) }.joined()
+      timeout = 40
+      print("checking it against your account; the first time, touch the sensor to release its key")
+    }
   case "piv":
-    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail("piv status|on|off|genkey|reset|pair|unpair") }
+    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail(pivUsage) }
     request.positional = [sub]
     timeout = 45
     if sub == "genkey" || sub == "reset" { print("touch the sensor to confirm") }
@@ -221,8 +238,12 @@ func runDirect(_ command: [String], port: String?) throws -> Int32 {
     print("touch the sensor to release the device key")
     printFields(try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3))
   case "gpio": printFields(try device.request(.gpio))
+  case "piv" where args.first == "mode":
+    printFields(try device.request(.pivMode(try unlockMode(args))))
+  case "password":
+    throw fail("password needs mactouchd running; it keeps the password in your keychain")
   case "piv":
-    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail("piv status|on|off|genkey|reset|pair|unpair") }
+    guard let sub = args.first, ["status", "on", "off", "genkey", "reset"].contains(sub) else { throw fail(pivUsage) }
     if sub == "genkey" || sub == "reset" { print("touch the sensor to confirm") }
     printFields(try device.request(.piv(sub.uppercased()), timeout: 40))
   case "selftest": try device.request(.selftest)
@@ -248,6 +269,9 @@ do {
   }
   if options.command == ["piv", "pair"] { exit(try runPIVPair()) }
   if options.command == ["piv", "unpair"] { exit(try runPIVUnpair()) }
+  if options.command[0] == "password", ["list", "add", "remove"].contains(options.command.dropFirst().first ?? "") {
+    exit(try runPasswordTargets(Array(options.command.dropFirst())))
+  }
   if !options.direct && ControlClient.isAvailable() {
     exit(try runViaDaemon(options.command))
   }

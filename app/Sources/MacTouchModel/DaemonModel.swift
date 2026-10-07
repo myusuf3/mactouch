@@ -26,10 +26,15 @@ public final class DaemonModel: ObservableObject {
     public var encrypted: Bool
     public var paired: Bool?
     public var unpairedHash: String?
+    public var unlockMode: UnlockMode
+    /// Whether mactouchd has a password for password mode; nil from a
+    /// daemon that predates it.
+    public var passwordStored: Bool?
     public init(enabled: Bool, identity: Bool, pinIsDefault: Bool, retries: Int, encrypted: Bool,
-                paired: Bool?, unpairedHash: String?) {
+                paired: Bool?, unpairedHash: String?, unlockMode: UnlockMode = .pin, passwordStored: Bool? = nil) {
       self.enabled = enabled; self.identity = identity; self.pinIsDefault = pinIsDefault
       self.retries = retries; self.encrypted = encrypted; self.paired = paired; self.unpairedHash = unpairedHash
+      self.unlockMode = unlockMode; self.passwordStored = passwordStored
     }
   }
 
@@ -83,9 +88,15 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var noMatches = 0
   @Published public private(set) var smartCard: SmartCard?
   /// The smart card action in flight, for the pane to show and to disable
-  /// the others: "genkey", "reset", "pair" or "unpair".
+  /// the others: "genkey", "reset", "pair", "unpair", "save" for the
+  /// password, or the unlock mode being switched to, "pin" or "password".
   @Published public private(set) var smartCardAction: String?
   @Published public private(set) var smartCardError: String?
+  /// The apps and sites given a password, ADR-0023; nil until read.
+  @Published public private(set) var passwordTargets: [PasswordTarget]?
+  /// Whether mactouchd may read browser addresses, which site passwords need.
+  @Published public private(set) var browserAccessAllowed: Bool?
+  @Published public private(set) var targetError: String?
   /// The board's firmware version and the slot it runs from.
   @Published public private(set) var firmware: String?
   @Published public private(set) var slot: String?
@@ -319,7 +330,31 @@ public final class DaemonModel: ObservableObject {
   /// Destroys the keys and restores the default PIN. Waits for a finger.
   public func resetSmartCard() { runSmartCard("reset") }
 
-  private func runSmartCard(_ action: String) {
+  /// Password mode, ADR-0022. A change of mode restarts the device when it
+  /// adds or removes its keyboard.
+  public func setUnlockMode(_ mode: UnlockMode) {
+    runSmartCard(mode.rawValue, ControlRequest(verb: "piv", positional: ["mode", mode.rawValue]))
+  }
+
+  /// mactouchd checks the password against the account and keeps it in the
+  /// keychain; the first time it also takes the device key, with a touch.
+  /// `thenUse` switches to password mode once it is saved.
+  public func savePassword(_ password: String, thenUse: Bool) {
+    let hex = Data(password.utf8).map { String(format: "%02x", $0) }.joined()
+    let save = ControlRequest(verb: "password", positional: ["set"], values: ["hex": hex])
+    let use = ControlRequest(verb: "piv", positional: ["mode", UnlockMode.password.rawValue])
+    runSmartCard("save", save, then: thenUse ? use : nil, settle: thenUse ? 2 : 0)
+  }
+
+  public func forgetPassword() {
+    send(ControlRequest(verb: "password", positional: ["clear"]))
+    requests.async { [weak self] in self?.loadSmartCard() }
+  }
+
+  /// `settle` is how long the device takes to come back after commands that
+  /// make it drop off USB.
+  private func runSmartCard(_ action: String, _ request: ControlRequest? = nil, then next: ControlRequest? = nil,
+                            settle: TimeInterval = 2) {
     guard smartCardAction == nil else { return }
     smartCardAction = action
     smartCardError = nil
@@ -329,12 +364,13 @@ public final class DaemonModel: ObservableObject {
       do {
         let client = try ControlClient(path: path)
         defer { client.close() }
-        _ = try client.request(ControlRequest(verb: "piv", positional: [action]), timeout: 45)
+        for step in [request ?? ControlRequest(verb: "piv", positional: [action]), next].compactMap({ $0 }) {
+          _ = try client.request(step, timeout: 45)
+        }
       } catch {
-        failure = describe(error)
+        failure = Self.smartCardFailure(describe(error))
       }
-      // The device drops off USB and comes back after either action.
-      Thread.sleep(forTimeInterval: 2)
+      Thread.sleep(forTimeInterval: settle)
       loadSmartCard()
       publish { model in
         model.smartCardAction = nil
@@ -402,6 +438,70 @@ public final class DaemonModel: ObservableObject {
     return String(message)
   }
 
+  // MARK: app and site passwords
+
+  public func refreshPasswordTargets() {
+    requests.async { [weak self] in self?.loadPasswordTargets() }
+  }
+
+  /// `password` is the target's own, nil to keep the one already saved or
+  /// when it uses the Mac password.
+  public func savePasswordTarget(_ target: PasswordTarget, password: String?) {
+    var values = ["kind": target.kind.rawValue, "id": target.id, "uses": target.uses.rawValue]
+    if let password { values["hex"] = Data(password.utf8).map { String(format: "%02x", $0) }.joined() }
+    changeTargets(ControlRequest(verb: "target", positional: ["set"], values: values))
+  }
+
+  public func removePasswordTarget(_ target: PasswordTarget) {
+    changeTargets(ControlRequest(verb: "target", positional: ["remove"], values: ["kind": target.kind.rawValue, "id": target.id]))
+  }
+
+  private func changeTargets(_ request: ControlRequest) {
+    requests.async { [weak self] in
+      guard let self else { return }
+      var failure: String?
+      do {
+        let client = try ControlClient(path: path)
+        defer { client.close() }
+        _ = try client.request(request)
+      } catch {
+        failure = Self.targetFailure(describe(error))
+      }
+      publish { $0.targetError = failure }
+      loadPasswordTargets()
+    }
+  }
+
+  static func targetFailure(_ reason: String) -> String {
+    switch reason {
+    case "builtin": return "That app always gets your Mac password."
+    case "site": return "Enter the site's host name as the address bar shows it, like github.com."
+    case "password": return "Enter the password for it."
+    default: return smartCardFailure(reason)
+    }
+  }
+
+  private func loadPasswordTargets() {
+    guard let client = try? ControlClient(path: path) else { return }
+    defer { client.close() }
+    guard let reply = try? client.request(ControlRequest(verb: "targets")),
+          let list = reply["list"].flatMap({ try? PasswordTarget.decode($0) }) else { return }
+    publish { model in
+      model.passwordTargets = list
+      model.browserAccessAllowed = reply["accessibility"] == "yes"
+    }
+  }
+
+  /// The daemon's reasons, as sentences for the pane.
+  static func smartCardFailure(_ reason: String) -> String {
+    switch reason {
+    case "wrong": return "That is not your Mac password."
+    case "characters": return "The sensor can type letters, digits, spaces and US keyboard symbols, up to 64."
+    case "key_released": return "The sensor gives out its key once per start; replug it and try again."
+    default: return reason
+    }
+  }
+
   private func loadSmartCard() {
     guard let client = try? ControlClient(path: path) else { return }
     defer { client.close() }
@@ -417,7 +517,10 @@ public final class DaemonModel: ObservableObject {
       retries: status.int("retries") ?? 0,
       encrypted: status["flash"] == "encrypted",
       paired: identities.map { !$0.paired.isEmpty },
-      unpairedHash: identities?.unpaired.first?.hash)
+      unpairedHash: identities?.unpaired.first?.hash,
+      unlockMode: status["mode"].flatMap(UnlockMode.init) ?? .pin,
+      passwordStored: (try? client.request(ControlRequest(verb: "password", positional: ["status"])))
+        .map { $0["stored"] == "yes" })
     publish { $0.smartCard = card }
   }
 

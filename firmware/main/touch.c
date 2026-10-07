@@ -36,7 +36,7 @@ static void match_on_touch(void) {
     result = zw101_match_now(&slot, &score);
     if (result == 2) vTaskDelay(pdMS_TO_TICKS(50));
   }
-  if (result == 1) link_send("EVT MATCH slot=%u score=%u", slot, score);
+  if (result == 1) link_report_match(slot, score);
   else if (result == 0) link_send("EVT NOMATCH");
   if (result == 1 || result == 0) led_result(result == 1);
   zw101_unlock();
@@ -59,7 +59,7 @@ static void touch_task(void *arg) {
       down_at = now;
       hold_sent = false;
       link_send("EVT TOUCH state=down");
-      if (watch) match_on_touch();
+      if (watch || link_armed()) match_on_touch();
     } else if (!now_present && last) {
       link_send("EVT TOUCH state=up");
       if (!hold_sent && now - down_at < pdMS_TO_TICKS(TAP_MAX_MS)) {

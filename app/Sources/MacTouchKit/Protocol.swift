@@ -13,6 +13,13 @@ public enum TouchSource: String, CaseIterable, Sendable {
   case pin, poll
 }
 
+/// How the Mac is unlocked, ADR-0022: the smart card's PIN then a touch, or
+/// the password, typed by the sensor after a touch wherever a password field
+/// asks for it.
+public enum UnlockMode: String, CaseIterable, Sendable {
+  case pin, password
+}
+
 /// A command for the device. `line` is the exact text sent, without the newline.
 public enum Command: Equatable, Sendable {
   case ping
@@ -29,6 +36,14 @@ public enum Command: Equatable, Sendable {
   case pair(timeoutMs: Int = 30000)
   /// `STATUS`, `GENKEY` or `RESET`; the last two wait for a finger.
   case piv(String)
+  /// A change the keyboard interface follows restarts the board after the
+  /// reply.
+  case pivMode(UnlockMode)
+  /// Arms the sensor for a password field, or disarms it with nil. The next
+  /// match comes back signed against the nonce.
+  case arm(nonce: String?)
+  /// The password, typed once in the few seconds after an armed match.
+  case type(password: String)
   /// A firmware update step, `BEGIN size=… sha256=…`, `WRITE off=… data=…`,
   /// `END` or `ABORT` (ADR-0018). BEGIN waits for a finger.
   case fw(String)
@@ -51,7 +66,9 @@ public enum Command: Equatable, Sendable {
     case .watch: return "WATCH"
     case .touch: return "TOUCH"
     case .pair: return "PAIR"
-    case .piv: return "PIV"
+    case .piv, .pivMode: return "PIV"
+    case .arm: return "ARM"
+    case .type: return "TYPE"
     case .fw: return "FW"
     case .gpio: return "GPIO"
     case .selftest: return "SELFTEST"
@@ -86,6 +103,10 @@ public enum Command: Equatable, Sendable {
     case .touch(let source): return "TOUCH \(source.rawValue)"
     case .pair(let timeoutMs): return "PAIR timeout=\(timeoutMs)"
     case .piv(let sub): return "PIV \(sub)"
+    case .pivMode(let mode): return "PIV MODE \(mode.rawValue)"
+    case .arm(let nonce?): return "ARM nonce=\(nonce)"
+    case .arm(nil): return "ARM off"
+    case .type(let password): return "TYPE " + password.utf8.map { String(format: "%02x", $0) }.joined()
     case .fw(let step): return "FW \(step)"
     default: return verb
     }

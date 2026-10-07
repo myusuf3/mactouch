@@ -3,7 +3,7 @@ import MacTouchModel
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-  case general, ring, monitors, fingers, smartCard, firmware, diagnostics, about
+  case general, ring, monitors, fingers, smartCard, passwords, firmware, diagnostics, about
 
   var id: Self { self }
 
@@ -14,6 +14,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .monitors: return "Monitors"
     case .fingers: return "Fingers"
     case .smartCard: return "Smart Card"
+    case .passwords: return "Passwords"
     case .firmware: return "Firmware"
     case .diagnostics: return "Diagnostics"
     case .about: return "About"
@@ -27,6 +28,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .monitors: return "dot.radiowaves.left.and.right"
     case .fingers: return "touchid"
     case .smartCard: return "person.badge.key.fill"
+    case .passwords: return "key.fill"
     case .firmware: return "cpu.fill"
     case .diagnostics: return "stethoscope"
     case .about: return "info"
@@ -40,6 +42,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     case .monitors: return .orange
     case .fingers: return .red
     case .smartCard: return .green
+    case .passwords: return .orange
     case .firmware: return .blue
     case .diagnostics: return .indigo
     case .about: return .gray
@@ -69,6 +72,7 @@ struct SettingsView: View {
         Section("Security") {
           row(.fingers)
           row(.smartCard)
+          row(.passwords)
         }
         Section("MacTouch") {
           row(.firmware)
@@ -106,6 +110,7 @@ struct SettingsView: View {
     case .monitors: MonitorsPane(model: model)
     case .fingers: FingersPane(model: model)
     case .smartCard: SmartCardPane(model: model)
+    case .passwords: PasswordsPane(model: model)
     case .firmware: FirmwarePane(model: model)
     case .diagnostics: DiagnosticsPane(model: model)
     case .about: AboutPane(model: model)
