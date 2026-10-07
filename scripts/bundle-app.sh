@@ -93,6 +93,8 @@ codesign --force --sign "${identity:--}" "$stage" 2>&1 | grep -v 'replacing exis
 print "Signed as ${identity:-ad hoc}"
 
 pkill -x MacTouch 2>/dev/null || true
+# open fails with -609 if the old copy is still on its way out.
+for _ in {1..50}; do pgrep -xq MacTouch || break; sleep 0.1; done
 mkdir -p "$HOME/Applications" "$bin"
 rm -rf "$target"
 ditto "$stage" "$target"
