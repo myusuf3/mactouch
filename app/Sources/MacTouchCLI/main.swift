@@ -30,7 +30,11 @@ usage: mactouch [--direct] [--port /dev/cu.usbmodemXXXX] <command>
   piv genkey|reset                make or destroy its identity; both need a touch
   piv mode pin|password           unlock with the smart card's PIN then a touch, or with
                                   your password, typed by the sensor after a touch
-  password set|clear|status       the password password mode types (needs mactouchd)
+  password set|clear|status       your Mac password, which password mode types (needs mactouchd)
+  password list                   which apps and sites get which password
+  password add app <bundle-id> [--mac] | site <host> [--mac]
+                                  give one its own password, asked for, or your Mac password
+  password remove app <bundle-id> | site <host>
   piv pair|unpair                 pair the card with your account through sc_auth
   firmware version|update [IMAGE] the board's firmware over the link, after a touch
                                   (IMAGE defaults to the one MacTouch.app carries)
@@ -265,6 +269,9 @@ do {
   }
   if options.command == ["piv", "pair"] { exit(try runPIVPair()) }
   if options.command == ["piv", "unpair"] { exit(try runPIVUnpair()) }
+  if options.command[0] == "password", ["list", "add", "remove"].contains(options.command.dropFirst().first ?? "") {
+    exit(try runPasswordTargets(Array(options.command.dropFirst())))
+  }
   if !options.direct && ControlClient.isAvailable() {
     exit(try runViaDaemon(options.command))
   }

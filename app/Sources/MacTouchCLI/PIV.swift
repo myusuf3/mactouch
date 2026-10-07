@@ -13,10 +13,10 @@ func unlockMode(_ args: [String]) throws -> UnlockMode {
 }
 
 /// From the terminal with echo off, so it never shows or reaches history.
-func readPassword() throws -> String {
+func readPassword(_ prompt: String = "Your Mac password: ") throws -> String {
   var buffer = [CChar](repeating: 0, count: 256)
   defer { _ = buffer.withUnsafeMutableBytes { memset_s($0.baseAddress, $0.count, 0, $0.count) } }
-  guard let read = readpassphrase("Your Mac password: ", &buffer, buffer.count, 0) else {
+  guard let read = readpassphrase(prompt, &buffer, buffer.count, 0) else {
     throw fail("cannot read a password here; run it in a terminal")
   }
   return String(cString: read)
@@ -82,4 +82,36 @@ private func scAuth(_ arguments: [String]) -> Int32 {
   do { try process.run() } catch { return 1 }
   process.waitUntilExit()
   return process.terminationStatus
+}
+
+/// mactouch password list|add|remove: which apps and sites get which
+/// password, ADR-0023. mactouchd keeps them, so it must be running.
+func runPasswordTargets(_ args: [String]) throws -> Int32 {
+  guard ControlClient.isAvailable() else { throw fail("password needs mactouchd running; it keeps the passwords in your keychain") }
+  let client = try ControlClient()
+  defer { client.close() }
+  let usage = "password list | add app <bundle-id>|site <host> [--mac] | remove app <bundle-id>|site <host>"
+  if args.first == "list" {
+    let reply = try client.request(ControlRequest(verb: "targets"))
+    let targets = try PasswordTarget.decode(reply["list"] ?? "")
+    let terminals = Set(PasswordTargets.builtIn.values).subtracting(["the login window", "a system dialog"])
+      .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    print("always your Mac password: the lock screen, system prompts, \(terminals.joined(separator: ", "))")
+    for target in targets {
+      print("\(target.kind.rawValue)\t\(target.id)\t\(target.uses == .mac ? "Mac password" : "own password")")
+    }
+    if reply["accessibility"] == "no", targets.contains(where: { $0.kind == .site }) {
+      print("sites are not matched until mactouchd is allowed in System Settings, Privacy & Security, Accessibility")
+    }
+    return 0
+  }
+  guard args.count >= 3, let kind = PasswordTarget.Kind(rawValue: args[1]) else { throw fail(usage) }
+  var values = ["kind": kind.rawValue, "id": args[2]]
+  if args[0] == "add" {
+    let mac = args.dropFirst(3).contains("--mac")
+    values["uses"] = mac ? "mac" : "own"
+    if !mac { values["hex"] = Data(try readPassword("Password for \(args[2]): ").utf8).map { String(format: "%02x", $0) }.joined() }
+  }
+  _ = try client.request(ControlRequest(verb: "target", positional: [args[0] == "add" ? "set" : "remove"], values: values))
+  return 0
 }

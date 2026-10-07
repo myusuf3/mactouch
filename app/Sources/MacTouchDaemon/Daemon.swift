@@ -26,6 +26,9 @@ final class Daemon {
   var arming = PasswordArming()
   var passwordStored = Vault.read(.password) != nil
   var deviceKey = Vault.read(.deviceKey)
+  var passwordTargets: [PasswordTarget] = []
+  /// Targets whose own password is in the keychain, so polling never reads it.
+  var ownStored: Set<String> = []
   let screen = ScreenLockMonitor()
   var screenLocked = false
   var fieldTimer: DispatchSourceTimer?
@@ -246,6 +249,9 @@ final class Daemon {
 
     case "password":
       passwordRequest(request, connection)
+
+    case "targets", "target":
+      targetRequest(request, connection)
 
     case "piv":
       guard let sub = request.positional.first?.uppercased(), ["STATUS", "ON", "OFF", "GENKEY", "RESET"].contains(sub) else { return fail("value") }
