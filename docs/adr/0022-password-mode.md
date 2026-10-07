@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amends [ADR-0006](0006-approval-primitive-not-credentials.md), which ruled out password typing, and [ADR-0013](0013-piv-for-screen-unlock.md), whose smart card stays the default.
+Accepted. Amends [ADR-0006](0006-approval-primitive-not-credentials.md), which ruled out password typing, and [ADR-0013](0013-piv-for-screen-unlock.md), whose smart card stays the default. Amended by [ADR-0023](0023-a-password-per-app-or-site.md): which password a field gets, and whether it gets one at all, follows the app or site asking.
 
 ## Context
 

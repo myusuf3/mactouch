@@ -114,6 +114,9 @@ are one at a time and a second gets `err ... reason=busy`.
 | `piv status\|on\|off\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
 | `piv mode pin\|password` | as device |
 | `password status\|clear` | `ok password stored=yes\|no`, `ok password` |
+| `targets` | `ok targets list=<base64 of JSON> accessibility=yes\|no`: the apps and sites given a password, ADR-0023, each `{"kind":"app"\|"site","id":…,"uses":"mac"\|"own"}` |
+| `target set kind=app\|site id=<bundle-id\|host> uses=mac\|own [hex=<utf-8 as hex>]` | `ok target` or `err target reason=value\|builtin\|site\|password\|characters\|keychain`. `hex` is the target's own password, required the first time it uses one |
+| `target remove kind=app\|site id=…` | `ok target`; its own password is deleted too |
 | `password set hex=<utf-8 as hex>` | `ok password` or `err password reason=value\|characters\|wrong\|key_released\|keychain\|...`. Checks it against the account and keeps it in mactouchd's keychain; the first time, a long command that takes the device key with `PAIR` |
 | `fw begin\|write\|end\|abort [key=value ...]` | as device; `begin` is a long command |
 | `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled`. While password mode is armed it disarms instead, until focus moves to another field |

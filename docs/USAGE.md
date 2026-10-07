@@ -98,14 +98,29 @@ mactouch piv mode password    # the device restarts as a keyboard too
 mactouch piv mode pin         # back to the smart card
 ```
 
-In password mode the lock screen shows your ordinary password field. Whenever
-a password field has focus, there or in any app, the ring breathes white;
-touch the sensor and it types your password and Return. A touch at any other
-time types nothing. After a restart, type the password once at the login
-window. An app that keeps secure input on, such as Terminal with Secure
-Keyboard Entry, counts as a password field while it has focus. macOS may show
-the Keyboard Setup Assistant the first time; close it. The Smart Card tab
-has the same switch as Unlock With.
+In password mode the lock screen shows your ordinary password field. When a
+password field that has a password has focus, the ring breathes white; touch
+the sensor and it types that password and Return. A touch at any other time
+types nothing. After a restart, type the password once at the login window.
+macOS may show the Keyboard Setup Assistant the first time; close it. The
+Smart Card tab has the same switch as Unlock With.
+
+Which password a field gets follows what is asking (ADR-0023). The lock
+screen, system prompts and the common terminals always get your Mac
+password. Other apps and websites get one only once you add them, in the
+Passwords tab or here:
+
+```
+mactouch password add app us.zoom.xos --mac   # Zoom gets your Mac password
+mactouch password add site github.com         # asks for github.com's own password
+mactouch password list
+mactouch password remove site github.com
+```
+
+Sites match the exact host in the browser's address bar, read through
+Accessibility, so allow mactouchd there when macOS asks. A terminal with
+Secure Keyboard Entry on counts as a password field the whole time it has
+focus.
 
 ### Firmware
 
