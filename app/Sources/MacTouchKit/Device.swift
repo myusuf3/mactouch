@@ -12,11 +12,15 @@ public final class Device {
   public var onRawLine: ((String) -> Void)?
   /// Every line written to the device, for debugging.
   public var onRawWrite: ((String) -> Void)?
+  /// The link has stopped answering, LinkWatch: the device still
+  /// enumerates but nothing comes back.
+  public var onDeaf: (() -> Void)?
 
   private let port: SerialPort
   private let state = NSLock()
   private var pending: ((DeviceLine?) -> Void)?
   private let requests = NSLock()
+  private var watch = LinkWatch()
 
   public init(path: String) throws {
     self.path = path
@@ -36,6 +40,7 @@ public final class Device {
   }
 
   private func handle(_ raw: String) {
+    state.lock(); watch.heard(); state.unlock()
     onRawLine?(raw)
     guard let line = DeviceLine.parse(raw) else { return }
     if case .event(let name, let fields) = line {
@@ -84,7 +89,11 @@ public final class Device {
     onRawWrite?(command.line)
     try port.write(command.line + "\n")
     if done.wait(timeout: .now() + timeout) == .timedOut {
-      state.lock(); pending = nil; state.unlock()
+      state.lock()
+      pending = nil
+      let deaf = watch.timedOut()
+      state.unlock()
+      if deaf { onDeaf?() }
       throw DeviceError.timeout(verb: command.verb)
     }
     if box.closed { throw DeviceError.disconnected }
