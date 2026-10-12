@@ -6,6 +6,7 @@
 # firmware), or hold the BOOT button while plugging the board in (any firmware).
 # In download mode the board shows up as a new /dev/cu.usbmodem* device.
 set -euo pipefail
+eval "$(idf-env 2>/dev/null)" 2>/dev/null || true
 
 here="${0:A:h}"
 firmware="$here/../firmware"
