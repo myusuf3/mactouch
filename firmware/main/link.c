@@ -10,6 +10,7 @@
 #include "driver/gpio.h"
 #include "esp_flash_encrypt.h"
 #include "esp_system.h"
+#include "esp_task_wdt.h"
 #include "esp_private/periph_ctrl.h"
 #include "soc/periph_defs.h"
 #include "soc/rtc_cntl_reg.h"
@@ -751,8 +752,11 @@ static void console_task(void *arg_) {
   uint8_t chunk[64];
   TickType_t next_beat = 0;
   bool beat = false;
+  // The task watchdog restarts the board if this loop stops (sdkconfig.defaults).
+  ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
 
   while (true) {
+    esp_task_wdt_reset();
     // Heartbeat on the board LED: a stopped blink means this task is stuck; a
     // blink with a silent host means the USB link is the problem.
     TickType_t now = xTaskGetTickCount();
@@ -766,6 +770,9 @@ static void console_task(void *arg_) {
     while (xQueueReceive(outbox, &out, 0) == pdTRUE) {
       write_line(out.text);
       wrote = true;
+      // Each write gives up after 200 ms, so a host that stops reading
+      // slows this loop without hanging it.
+      esp_task_wdt_reset();
     }
 
     bool connected = tud_cdc_connected();
