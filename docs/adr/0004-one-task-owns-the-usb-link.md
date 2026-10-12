@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Amended 2026-10-08: a Mac waking from sleep left the serial endpoints wedged while the board still enumerated and its smart card reader still answered; the firmware was not hung, and a USB bus reset from the host brought the link back. mactouchd now pings an idle link every 20 seconds and on every wake, and resets the board's USB after two timeouts in a row with nothing heard, at most once a minute (`LinkWatch`). On the board, the task watchdog watches the console task alone and restarts the board if it stops for 10 seconds, for a hang a bus reset cannot clear.
 
 ## Context
 

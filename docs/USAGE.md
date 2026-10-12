@@ -250,8 +250,13 @@ password field.
 
 **`mactouch status` says the device is not responding, or hangs, or the
 daemon logs timeouts.** The board's USB link has died; the yellow heartbeat
-LED tells you whether the firmware itself is alive. Unplug and replug the
-board. If it recurs, open an issue with the log.
+LED tells you whether the firmware itself is alive. A Mac waking from sleep
+can leave the link like this while the board still enumerates. mactouchd
+pings the board every 20 seconds and on every wake and, after two timeouts
+in a row, resets the board's USB as a replug would; the log says "device
+stopped answering; resetting its USB". If the firmware itself hangs, its
+watchdog restarts the board within 10 seconds. If that does not bring it back, unplug and replug the
+board, and if it recurs, open an issue with the log.
 
 **`--direct` says the port is held by another process.** The daemon has it,
 as intended. Drop `--direct`, or `scripts/daemon.sh stop` first.
