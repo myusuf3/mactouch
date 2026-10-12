@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import MacTouchKit
 
 let protocolVersion = 1
@@ -20,6 +20,10 @@ final class Daemon {
   var uiClients: Set<UUID> = []
   var expiryTimer: DispatchSourceTimer?
   var monitors: Monitors!
+  var linkTimer: DispatchSourceTimer?
+  /// How often an idle link is pinged. A link that stops answering for any
+  /// reason is reset by LinkWatch within about one interval of this.
+  static let linkCheckInterval: DispatchTimeInterval = .seconds(20)
 
   // Password mode, PasswordMode.swift.
   var unlockMode: UnlockMode = .pin
@@ -85,6 +89,23 @@ final class Daemon {
       }
     }
     manager.start()
+    // The board's serial link can come back from the Mac's sleep wedged.
+    // Check it on waking, before the lock screen needs a touch to type.
+    NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                                                      queue: nil) { [weak self] _ in
+      log("woke from sleep; checking the device link")
+      self?.manager.checkLink()
+    }
+    // Long commands own the link and answer when they end, so only an idle
+    // link is checked.
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + Self.linkCheckInterval, repeating: Self.linkCheckInterval)
+    timer.setEventHandler { [weak self] in
+      guard let self, self.busy == nil else { return }
+      self.manager.checkLink()
+    }
+    linkTimer = timer
+    timer.resume()
   }
 
   // MARK: ring
