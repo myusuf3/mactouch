@@ -6,6 +6,7 @@ firmware/sdkconfig.old
 firmware/managed_components/
 firmware/dependencies.lock
 firmware/test/build/
+firmware/.cache/
 
 # pam module
 pam/build/
