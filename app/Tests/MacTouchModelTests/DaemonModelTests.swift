@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MacTouchKit
 import Testing
@@ -222,6 +223,43 @@ private func fakeDaemon(recording received: Received, at path: String? = nil, se
     sensor.serial = "MT-ONE"
     server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-ONE")]))
     try await waitUntil { model.names == [1: "Thumb"] }
+  }
+
+  @Test @MainActor func announcesASensorThatReplacesTheLastOne() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    var replaced: [String] = []
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    let watching = model.boardReplaced.sink { replaced.append($0) }
+    defer { watching.cancel() }
+    // The first board this Mac sees replaces nothing.
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+
+    // The same board back after a replug is no news.
+    sensor.connected = false
+    server.broadcast(ControlLine.evt("device", [("state", "absent")]))
+    try await waitUntil { model.boardSerial == nil }
+    sensor.connected = true
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-ONE")]))
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+
+    sensor.serial = "MT-TWO"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-TWO")]))
+    try await waitUntil { model.boardSerial == "MT-TWO" }
+    #expect(replaced == ["MT-TWO"])
+
+    // Remembered across launches.
+    sensor.serial = "MT-ONE"
+    var replacedLater: [String] = []
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    let watchingLater = reopened.boardReplaced.sink { replacedLater.append($0) }
+    defer { watchingLater.cancel() }
+    try await waitUntil { replacedLater == ["MT-ONE"] }
   }
 
   @Test @MainActor func reportsHealthFromTheDaemon() async throws {

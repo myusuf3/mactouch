@@ -6,20 +6,24 @@ import SwiftUI
 
 /// The setup window, docs/ONBOARDING.md. AppKit owns it rather than a
 /// SwiftUI `Window` scene, which macOS 14 would open at every login; this
-/// one opens once on its own, the first time the app finds sudo not yet
-/// set up, and after that only from the menu.
+/// one opens on its own the first time the app finds sudo not yet set up,
+/// and when a different board is plugged in with steps left to redo, and
+/// otherwise only from the menu.
 final class SetupWindow {
   private let model: DaemonModel
   private let agent: DaemonAgent
   private let defaults: UserDefaults
   private var window: NSWindow?
   private var firstReport: AnyCancellable?
+  private var replacement: AnyCancellable?
+  private var nextReport: AnyCancellable?
   private static let offeredKey = "setupOffered"
 
   init(model: DaemonModel, agent: DaemonAgent, defaults: UserDefaults = .standard) {
     self.model = model
     self.agent = agent
     self.defaults = defaults
+    replacement = model.boardReplaced.sink { [weak self] _ in self?.offerForReplacedBoard() }
     guard !defaults.bool(forKey: Self.offeredKey) else { return }
     // A published value arrives before the property holds it, so the
     // decision waits a turn of the run loop to read the model.
@@ -49,6 +53,21 @@ final class SetupWindow {
   private func offerOnce() {
     defaults.set(true, forKey: Self.offeredKey)
     if model.needsSetup == true { show(from: .welcome) }
+  }
+
+  /// Another board has its own fingers and needs its own pairing. Once the
+  /// Mac's side has been read again, open on whatever is left to do.
+  private func offerForReplacedBoard() {
+    nextReport = model.$health
+      .dropFirst()
+      .compactMap { $0 }
+      .first()
+      .sink { [weak self] _ in DispatchQueue.main.async { self?.offerIfUnfinished() } }
+    model.refreshHealth()
+  }
+
+  private func offerIfUnfinished() {
+    if SetupStep.allCases.contains(where: { !model.isDone($0) && !$0.isOptional }) { show() }
   }
 
   private func makeWindow() -> NSWindow {

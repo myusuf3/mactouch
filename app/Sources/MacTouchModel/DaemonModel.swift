@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MacTouchKit
 
@@ -70,6 +71,9 @@ public final class DaemonModel: ObservableObject {
   /// The attached board's USB serial number, which tells boards apart; nil
   /// with no board attached.
   @Published public private(set) var boardSerial: String?
+  /// The serial of a board attached in place of the last one this Mac saw,
+  /// whose fingers, sudo key and smart card are not this one's.
+  public let boardReplaced = PassthroughSubject<String, Never>()
   @Published public private(set) var sensor: String?
   @Published public private(set) var prints: Int?
   /// The ring as the daemon spells it, `mode:colour[:colour2]`.
@@ -160,6 +164,7 @@ public final class DaemonModel: ObservableObject {
   private let defaults: UserDefaults
   /// Board serial, then slot as a string, then name.
   private static let namesKey = "fingerNames"
+  private static let lastBoardKey = "lastBoard"
   private let requests = DispatchQueue(label: "mactouch.requests")
   private let administrator: (_ command: [String], _ prompt: String) -> String?
   private let pamDirectory: String
@@ -246,6 +251,13 @@ public final class DaemonModel: ObservableObject {
     var stored = storedNames
     stored[board] = Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) })
     defaults.set(stored, forKey: Self.namesKey)
+  }
+
+  private func noteBoard(_ board: String?) {
+    guard let board else { return }
+    let last = defaults.string(forKey: Self.lastBoardKey)
+    defaults.set(board, forKey: Self.lastBoardKey)
+    if let last, last != board { boardReplaced.send(board) }
   }
 
   private var storedNames: [String: [String: String]] {
@@ -718,6 +730,7 @@ public final class DaemonModel: ObservableObject {
       if board != model.boardSerial {
         model.boardSerial = board
         model.names = model.names(for: board)
+        model.noteBoard(board)
       }
       model.ring = status["ring"]
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
