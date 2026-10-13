@@ -15,6 +15,22 @@ private final class Received: @unchecked Sendable {
   var hellos: Int { lock.lock(); defer { lock.unlock() }; return helloCount }
 }
 
+/// The sensor behind a fake daemon, swapped by tests to stand in for a
+/// different board being plugged in.
+private final class FakeSensor: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _connected = true
+  private var _slots = "1,3"
+  var connected: Bool {
+    get { lock.lock(); defer { lock.unlock() }; return _connected }
+    set { lock.lock(); _connected = newValue; lock.unlock() }
+  }
+  var slots: String {
+    get { lock.lock(); defer { lock.unlock() }; return _slots }
+    set { lock.lock(); _slots = newValue; lock.unlock() }
+  }
+}
+
 @MainActor
 private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> Bool) async throws {
   let deadline = Date().addingTimeInterval(seconds)
@@ -26,20 +42,24 @@ private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> B
 
 /// A daemon with a connected device, two fingers and a notify layer, that
 /// records every other request and answers `ok`.
-private func fakeDaemon(recording received: Received, at path: String? = nil) throws -> ControlServer {
+private func fakeDaemon(recording received: Received, at path: String? = nil, sensor: FakeSensor = FakeSensor()) throws -> ControlServer {
   let server = ControlServer(path: path ?? NSTemporaryDirectory() + "mactouch-model-\(UUID().uuidString.prefix(8)).sock")
   server.handler = { request, connection in
     switch request.verb {
     case "events":
       connection.subscribed = true
       connection.send(ControlLine.evt("device", [("state", "connected")]))
+    case "status" where !sensor.connected:
+      connection.send(ControlLine.ok("status", [("device", "absent"), ("ring", "on:blue"), ("layers", "idle")]))
     case "status":
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "breathe:red"), ("layers", "idle,privacy,notify"),
         ("monitors", "lock,focus,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
       ]))
+    case "slots" where !sensor.connected:
+      connection.send(ControlLine.err("slots", "device"))
     case "slots":
-      connection.send(ControlLine.ok("slots", [("used", "1,3"), ("capacity", "20")]))
+      connection.send(ControlLine.ok("slots", [("used", sensor.slots), ("capacity", "20")]))
     case "enroll":
       received.append(request.line)
       for step in ["touch", "lift", "touch_again", "processing"] {
@@ -150,6 +170,24 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     server = try fakeDaemon(recording: received, at: path)
     defer { server.stop() }
     try await waitUntil { received.hellos == 2 }
+  }
+
+  @Test @MainActor func readsTheFingersOfWhicheverSensorIsPluggedIn() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let model = DaemonModel(path: server.path)
+    try await waitUntil { model.slots == [1, 3] }
+
+    sensor.connected = false
+    server.broadcast(ControlLine.evt("device", [("state", "absent")]))
+    try await waitUntil { model.slots.isEmpty }
+    #expect(model.firmware == nil)
+
+    sensor.slots = "2"
+    sensor.connected = true
+    server.broadcast(ControlLine.evt("device", [("state", "connected")]))
+    try await waitUntil { model.slots == [2] }
   }
 
   @Test @MainActor func reportsHealthFromTheDaemon() async throws {

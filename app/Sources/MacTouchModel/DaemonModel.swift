@@ -651,6 +651,7 @@ public final class DaemonModel: ObservableObject {
     case "device":
       publish { $0.deviceConnected = fields["state"] == "connected" }
       refreshStatus()
+      loadSlots()
       loadSmartCard()
     case "ring":
       publish { $0.ring = fields["state"] }
@@ -677,9 +678,10 @@ public final class DaemonModel: ObservableObject {
     }
   }
 
-  /// Sensor and finger count only come from `status`, and the daemon omits
-  /// them while a long command owns the device, so a reply without them
-  /// keeps the last known values.
+  /// Sensor, finger count and firmware only come from `status`, and the
+  /// daemon omits them while a long command owns the device, so a reply
+  /// without them keeps the last known values. Losing the board clears
+  /// them, since the next one attached may be another.
   private func refreshStatus() {
     guard let client = try? ControlClient(path: path) else { return }
     defer { client.close() }
@@ -694,6 +696,9 @@ public final class DaemonModel: ObservableObject {
       if !model.deviceConnected {
         model.sensor = nil
         model.prints = nil
+        model.slots = []
+        model.firmware = nil
+        model.slot = nil
       }
       if let sensor = status["sensor"] { model.sensor = sensor }
       if let firmware = status["fw"] { model.firmware = firmware }
