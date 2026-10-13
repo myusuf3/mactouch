@@ -16,6 +16,9 @@ struct StatusMenu: View {
     Label { Text(statusLine) } icon: { Image(nsImage: (model.deviceConnected ? model.ringState?.colour : nil)?.swatch ?? LEDColour.off.swatch) }
       .onAppear { agent.refresh() }
     if let ringLine { Text(ringLine) }
+    if model.sudoPairedWithAnotherBoard {
+      Button("Pair This Sensor for sudo…", action: openSetup)
+    }
     if !model.daemonRunning {
       if agent.status == .requiresApproval {
         Button("Allow MacTouch in Login Items…") { agent.openLoginItems() }

@@ -85,15 +85,19 @@ struct SudoSection: View {
   var body: some View {
     Section {
       Toggle(isOn: sudo) {
-        RowLabel(title: "Use for sudo",
-                 detail: model.sudoByFingerprint ? "Terminal asks for a touch before your password." : "Terminal asks for your password.",
-                 symbol: "terminal.fill", tint: .gray)
+        RowLabel(title: "Use for sudo", detail: detail, symbol: "terminal.fill", tint: .gray)
       }
       .disabled(!model.canChangeSudo || model.sudoTask == .running || (!model.sudoByFingerprint && !model.daemonRunning))
+      if model.sudoPairedWithAnotherBoard && model.sudoTask != .running && model.canChangeSudo {
+        LabeledContent("Paired with a different sensor") {
+          Button("Pair This Sensor…") { model.enableSudo() }
+            .disabled(!model.daemonRunning)
+        }
+      }
       if model.sudoTask == .running {
         HStack(spacing: 8) {
           ProgressView().controlSize(.small)
-          Text(model.sudoByFingerprint
+          Text(model.isDone(.sudo)
                ? "Enter your password in the macOS prompt…"
                : "Enter your password in the macOS prompt, then touch the sensor when the ring breathes white…")
             .foregroundStyle(.secondary)
@@ -106,6 +110,12 @@ struct SudoSection: View {
                ? "Your password keeps working whenever you would rather type it. Turning this off keeps the sensor's key, so turning it on again needs no touch."
                : "This copy of MacTouch cannot change it. From the source checkout, run sudo scripts/pam-install.sh or pam-uninstall.sh.")
     }
+  }
+
+  private var detail: String {
+    guard model.sudoByFingerprint else { return "Terminal asks for your password." }
+    guard !model.sudoPairedWithAnotherBoard else { return "Terminal asks for your password until this sensor is paired." }
+    return "Terminal asks for a touch before your password."
   }
 
   private var sudo: Binding<Bool> {

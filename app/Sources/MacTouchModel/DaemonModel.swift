@@ -67,6 +67,9 @@ public final class DaemonModel: ObservableObject {
 
   @Published public private(set) var daemonRunning = false
   @Published public private(set) var deviceConnected = false
+  /// The attached board's USB serial number, which tells boards apart; nil
+  /// with no board attached.
+  @Published public private(set) var boardSerial: String?
   @Published public private(set) var sensor: String?
   @Published public private(set) var prints: Int?
   /// The ring as the daemon spells it, `mode:colour[:colour2]`.
@@ -107,6 +110,9 @@ public final class DaemonModel: ObservableObject {
   public let tools: BundledTools?
   /// The PAM services that load pam_mactouch, nil until read.
   @Published public private(set) var pamServices: [String]?
+  /// The board whose key sudo verifies with, as pam-install.sh recorded it;
+  /// nil when it recorded none, as installs before boards were named did.
+  @Published public private(set) var sudoKeyBoard: String?
   /// What is at /usr/local/bin/mactouch, nil without the bundled CLI.
   @Published public private(set) var commandLineTool: CommandLineTool?
   @Published public private(set) var sudoTask: AdminTask?
@@ -156,6 +162,7 @@ public final class DaemonModel: ObservableObject {
   private let requests = DispatchQueue(label: "mactouch.requests")
   private let administrator: (_ command: [String], _ prompt: String) -> String?
   private let pamDirectory: String
+  private let keyDirectory: String
   private let commandLineLink: String
 
   /// `administrator` runs one command as root behind the system's
@@ -163,13 +170,15 @@ public final class DaemonModel: ObservableObject {
   /// or nil; tests stand in for the prompt.
   public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
               bundledFirmware: FirmwareImage? = nil, tools: BundledTools? = nil,
-              pamDirectory: String = "/etc/pam.d", commandLineLink: String = "/usr/local/bin/mactouch",
+              pamDirectory: String = "/etc/pam.d", keyDirectory: String = "/etc/mactouch",
+              commandLineLink: String = "/usr/local/bin/mactouch",
               administrator: ((_ command: [String], _ prompt: String) -> String?)? = nil) {
     self.path = path
     self.defaults = defaults
     self.bundledFirmware = bundledFirmware
     self.tools = tools
     self.pamDirectory = pamDirectory
+    self.keyDirectory = keyDirectory
     self.commandLineLink = commandLineLink
     self.administrator = administrator ?? { Self.runAsAdministrator($0, prompt: $1) }
     let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
@@ -596,9 +605,12 @@ public final class DaemonModel: ObservableObject {
   /// at the command's path. Files only, so it works with the daemon down.
   private func loadInstallState() {
     let services = PAMConfig.services(in: pamDirectory)
+    let keyBoard = (try? String(contentsOfFile: "\(keyDirectory)/\(NSUserName()).sensor", encoding: .utf8))?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     let tool = tools.map { CommandLineTool.status(at: commandLineLink, for: $0.cli) }
     publish { model in
       model.pamServices = services
+      model.sudoKeyBoard = keyBoard
       model.commandLineTool = tool
     }
   }
@@ -689,6 +701,7 @@ public final class DaemonModel: ObservableObject {
     publish { model in
       model.daemonRunning = true
       model.deviceConnected = status["device"] == "connected"
+      model.boardSerial = model.deviceConnected ? status["serial"] : nil
       model.ring = status["ring"]
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
       model.idle = status["idle"].flatMap(LEDColour.init)

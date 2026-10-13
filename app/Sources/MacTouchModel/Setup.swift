@@ -49,7 +49,7 @@ extension DaemonModel {
     case .connect: return deviceConnected
     case .firmware: return deviceConnected && firmware != nil && !firmwareUpdateAvailable
     case .finger: return (prints ?? 0) > 0
-    case .sudo: return sudoByFingerprint
+    case .sudo: return sudoByFingerprint && !sudoPairedWithAnotherBoard
     case .smartCard: return smartCard?.paired == true
     }
   }
@@ -58,6 +58,14 @@ extension DaemonModel {
   /// sudo_local file it includes. Other services, such as su, do not count.
   public var sudoByFingerprint: Bool {
     pamServices?.contains { $0 == "sudo" || $0 == "sudo_local" } ?? false
+  }
+
+  /// Whether sudo is on but its key cannot verify the attached board: it
+  /// came from another board, or from an install that did not say which.
+  /// Sudo then falls back to the password until this board is paired.
+  public var sudoPairedWithAnotherBoard: Bool {
+    guard sudoByFingerprint, let boardSerial else { return false }
+    return sudoKeyBoard != boardSerial
   }
 
   /// Whether this Mac still needs setting up, nil until its PAM files have

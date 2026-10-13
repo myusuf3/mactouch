@@ -272,7 +272,10 @@ struct SetupView: View {
       }
     } else {
       VStack(spacing: 10) {
-        Button("Turn On…") { model.enableSudo() }
+        if model.sudoPairedWithAnotherBoard {
+          Waiting("sudo is paired with a different sensor, so it asks for your password until this one is paired.")
+        }
+        Button(model.sudoPairedWithAnotherBoard ? "Pair This Sensor…" : "Turn On…") { model.enableSudo() }
           .buttonStyle(.borderedProminent)
           .disabled(!model.daemonRunning)
         if case .failed(let reason)? = model.sudoTask, reason != "cancelled" {
