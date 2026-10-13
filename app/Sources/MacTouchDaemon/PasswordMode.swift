@@ -10,6 +10,15 @@ extension Daemon {
   /// Secure input is polled, so a field is noticed within this long.
   private static let fieldPoll: DispatchTimeInterval = .milliseconds(500)
   private static let targetsKey = "password.targets"
+  private static let deviceKeySerialKey = "deviceKey.serial"
+
+  /// The stored device key when it belongs to the attached board. A key
+  /// taken from another board, or stored before keys named their board,
+  /// cannot verify this one's matches, so password mode pairs again.
+  var attachedDeviceKey: Data? {
+    guard let serial = manager.serial, defaults.string(forKey: Self.deviceKeySerialKey) == serial else { return nil }
+    return deviceKey
+  }
 
   func startWatchingForPasswordFields() {
     passwordTargets = (defaults.string(forKey: Self.targetsKey)).flatMap { try? PasswordTarget.decode($0) } ?? []
@@ -59,7 +68,7 @@ extension Daemon {
   func updateArming() {
     guard busy == nil, let device = manager.device else { return }
     let field = passwordField
-    let inputs = PasswordArming.Inputs(mode: unlockMode, passwordStored: deviceKey != nil && field.map { hasPassword($0.password) } == true,
+    let inputs = PasswordArming.Inputs(mode: unlockMode, passwordStored: attachedDeviceKey != nil && field.map { hasPassword($0.password) } == true,
                                        field: field)
     switch arming.update(inputs) {
     case .arm(let nonce, let field)?:
@@ -103,7 +112,7 @@ extension Daemon {
   }
 
   func passwordMatch(_ fields: Fields) {
-    guard let key = deviceKey, let slot = fields.int("slot") else { return }
+    guard let key = attachedDeviceKey, let slot = fields.int("slot") else { return }
     switch arming.matched(slot: slot, mac: fields["mac"], key: key) {
     case .type(let field):
       endPrompt()
@@ -138,7 +147,7 @@ extension Daemon {
     let verb = request.verb
     switch request.positional.first {
     case "status":
-      connection.send(ControlLine.ok(verb, [("stored", passwordStored && deviceKey != nil ? "yes" : "no")]))
+      connection.send(ControlLine.ok(verb, [("stored", passwordStored && attachedDeviceKey != nil ? "yes" : "no")]))
     case "clear":
       Vault.remove(.password)
       passwordStored = false
@@ -150,9 +159,10 @@ extension Daemon {
       }
       guard PasswordArming.typeable(password) else { return connection.send(ControlLine.err(verb, "characters")) }
       guard Self.isAccountPassword(password) else { return connection.send(ControlLine.err(verb, "wrong")) }
-      if deviceKey != nil {
+      if attachedDeviceKey != nil {
         store(password, verb, connection)
       } else {
+        let serial = manager.serial
         runLong(verb, connection, timeout: 33) { [weak self] device in
           let fields: Fields
           do {
@@ -167,6 +177,7 @@ extension Daemon {
           try Vault.write(.password, Data(password.utf8))
           self?.queue.async {
             self?.deviceKey = key
+            self?.defaults.set(serial, forKey: Self.deviceKeySerialKey)
             self?.passwordStored = true
           }
           return Fields()
