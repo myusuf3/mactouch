@@ -99,6 +99,8 @@ public struct HealthReport: Sendable {
     checks.append(sudoCheck(installed: FileManager.default.fileExists(atPath: PAMConfig.module),
                             services: PAMConfig.services(), keyBoard: PAMConfig.keyBoard(), board: status?["serial"]))
 
+    if let touch = status?["touch"] { checks.append(touchCheck(touch)) }
+
     if let prints = status?.int("prints") {
       checks.append(prints > 0
         ? HealthCheck(.ok, "fingers", "\(prints) enrolled")
@@ -181,6 +183,15 @@ public struct HealthReport: Sendable {
       return HealthCheck(.warn, "sudo", "paired with another sensor, so sudo asks for the password; Pair This Sensor… in the menu, or sudo scripts/pam-install.sh")
     }
     return HealthCheck(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
+  }
+
+  /// How the firmware notices a finger. Nothing says whether the TouchOut
+  /// wire works short of a touch, so the pin row says what to try when
+  /// touches do nothing.
+  static func touchCheck(_ source: String) -> HealthCheck {
+    source == "poll"
+      ? HealthCheck(.ok, "touch", "polling the sensor for a finger; mactouch touch pin once its TouchOut wire is connected")
+      : HealthCheck(.ok, "touch", "the sensor's TouchOut wire signals a finger; if touches do nothing, mactouch touch poll")
   }
 
   private static func deviceCheck(connected: Bool, firmware: String?) -> HealthCheck {

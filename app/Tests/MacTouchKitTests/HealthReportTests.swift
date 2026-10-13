@@ -130,6 +130,15 @@ import Testing
     #expect(HealthReport.sudoCheck(installed: true, services: [], keyBoard: "MT-B", board: "MT-B").verdict == .warn)
   }
 
+  @Test func touchRowSaysHowFingersAreNoticed() throws {
+    let polling = try fakeDaemon(status: [("device", "connected"), ("touch", "poll")])
+    defer { polling.stop() }
+    let row = HealthReport.viaDaemon(at: polling.path).checks.first { $0.name == "touch" }
+    #expect(row?.verdict == .ok)
+    #expect(row?.detail.contains("mactouch touch pin") == true)
+    #expect(HealthReport.touchCheck("pin").detail.contains("mactouch touch poll"))
+  }
+
   @Test func defaultPINWarnsEvenWhenPaired() throws {
     let paired = SmartCardIdentities(paired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
     let row = try unlockRow(piv: "identity", pin: "default", identities: paired)
