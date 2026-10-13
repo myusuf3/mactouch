@@ -82,9 +82,9 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var slots: [Int] = []
   @Published public private(set) var capacity = 20
   @Published public private(set) var enrolment: Enrolment = .idle
-  /// Names people give their fingers, kept in the app's defaults; the
-  /// device knows only slot numbers.
-  @Published public private(set) var names: [Int: String]
+  /// Names people give the attached board's fingers, kept in the app's
+  /// defaults per board; the device knows only slot numbers.
+  @Published public private(set) var names: [Int: String] = [:]
   @Published public private(set) var health: HealthReport?
   @Published public private(set) var request: Request?
   /// Failed attempts during the current request, so the panel can say so.
@@ -158,7 +158,8 @@ public final class DaemonModel: ObservableObject {
 
   private let path: String
   private let defaults: UserDefaults
-  private static let namesKey = "slotNames"
+  /// Board serial, then slot as a string, then name.
+  private static let namesKey = "fingerNames"
   private let requests = DispatchQueue(label: "mactouch.requests")
   private let administrator: (_ command: [String], _ prompt: String) -> String?
   private let pamDirectory: String
@@ -181,8 +182,8 @@ public final class DaemonModel: ObservableObject {
     self.keyDirectory = keyDirectory
     self.commandLineLink = commandLineLink
     self.administrator = administrator ?? { Self.runAsAdministrator($0, prompt: $1) }
-    let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
-    names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
+    // Names kept before they were kept per board could be any board's.
+    defaults.removeObject(forKey: "slotNames")
     let thread = Thread { [weak self] in self?.streamEvents() }
     thread.name = "mactouch.events"
     thread.start()
@@ -240,8 +241,20 @@ public final class DaemonModel: ObservableObject {
   }
 
   public func rename(_ slot: Int, to name: String) {
+    guard let board = boardSerial else { return }
     names[slot] = name.isEmpty ? nil : name
-    defaults.set(Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) }), forKey: Self.namesKey)
+    var stored = storedNames
+    stored[board] = Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) })
+    defaults.set(stored, forKey: Self.namesKey)
+  }
+
+  private var storedNames: [String: [String: String]] {
+    defaults.dictionary(forKey: Self.namesKey) as? [String: [String: String]] ?? [:]
+  }
+
+  private func names(for board: String?) -> [Int: String] {
+    guard let board, let stored = storedNames[board] else { return [:] }
+    return Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
   }
 
   private func loadSlots() {
@@ -701,7 +714,11 @@ public final class DaemonModel: ObservableObject {
     publish { model in
       model.daemonRunning = true
       model.deviceConnected = status["device"] == "connected"
-      model.boardSerial = model.deviceConnected ? status["serial"] : nil
+      let board = model.deviceConnected ? status["serial"] : nil
+      if board != model.boardSerial {
+        model.boardSerial = board
+        model.names = model.names(for: board)
+      }
       model.ring = status["ring"]
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
       model.idle = status["idle"].flatMap(LEDColour.init)

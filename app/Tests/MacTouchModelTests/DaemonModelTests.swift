@@ -21,6 +21,7 @@ private final class FakeSensor: @unchecked Sendable {
   private let lock = NSLock()
   private var _connected = true
   private var _slots = "1,3"
+  private var _serial = "MT-ONE"
   var connected: Bool {
     get { lock.lock(); defer { lock.unlock() }; return _connected }
     set { lock.lock(); _connected = newValue; lock.unlock() }
@@ -28,6 +29,10 @@ private final class FakeSensor: @unchecked Sendable {
   var slots: String {
     get { lock.lock(); defer { lock.unlock() }; return _slots }
     set { lock.lock(); _slots = newValue; lock.unlock() }
+  }
+  var serial: String {
+    get { lock.lock(); defer { lock.unlock() }; return _serial }
+    set { lock.lock(); _serial = newValue; lock.unlock() }
   }
 }
 
@@ -55,6 +60,7 @@ private func fakeDaemon(recording received: Received, at path: String? = nil, se
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "breathe:red"), ("layers", "idle,privacy,notify"),
         ("monitors", "lock,focus,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
+        ("serial", sensor.serial),
       ]))
     case "slots" where !sensor.connected:
       connection.send(ControlLine.err("slots", "device"))
@@ -137,7 +143,8 @@ private func fakeDaemon(recording received: Received, at path: String? = nil, se
 
     model.rename(1, to: "Thumb")
     #expect(model.names[1] == "Thumb")
-    #expect(DaemonModel(path: server.path, defaults: defaults).names[1] == "Thumb")
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { reopened.names[1] == "Thumb" }
 
     model.delete(slot: 1)
     try await waitUntil { received.all.count == 2 }
@@ -188,6 +195,33 @@ private func fakeDaemon(recording received: Received, at path: String? = nil, se
     sensor.connected = true
     server.broadcast(ControlLine.evt("device", [("state", "connected")]))
     try await waitUntil { model.slots == [2] }
+  }
+
+  @Test @MainActor func namesFollowTheSensorTheyWereGivenOn() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    // Names kept before they were kept per sensor could be any sensor's.
+    defaults.set(["1": "left thumb"], forKey: "slotNames")
+
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+    #expect(model.names.isEmpty)
+    #expect(defaults.object(forKey: "slotNames") == nil)
+    model.rename(1, to: "Thumb")
+
+    sensor.serial = "MT-TWO"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-TWO")]))
+    try await waitUntil { model.boardSerial == "MT-TWO" }
+    #expect(model.names.isEmpty)
+    model.rename(1, to: "Index")
+
+    sensor.serial = "MT-ONE"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-ONE")]))
+    try await waitUntil { model.names == [1: "Thumb"] }
   }
 
   @Test @MainActor func reportsHealthFromTheDaemon() async throws {
