@@ -1,17 +1,17 @@
 import MacTouchKit
 import MacTouchModel
-import ServiceManagement
 import SwiftUI
 
 struct GeneralPane: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
   @ObservedObject var loginItem: LoginItem
   @AppStorage(showInMenuBarKey) private var showInMenuBar = true
 
   var body: some View {
     Form {
       Section {
-        SensorCard(model: model)
+        SensorCard(model: model, agent: agent)
       }
       Section {
         Toggle("Launch at login", isOn: launchAtLogin)
@@ -33,6 +33,7 @@ struct GeneralPane: View {
     }
     .formStyle(.grouped)
     .onAppear {
+      agent.refresh()
       loginItem.refresh()
       model.refreshInstallState()
     }
@@ -47,6 +48,7 @@ struct GeneralPane: View {
 /// knowing about it on one line.
 struct SensorCard: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
 
   var body: some View {
     HStack(spacing: 14) {
@@ -62,7 +64,7 @@ struct SensorCard: View {
       if model.daemonRunning {
         StatusBadge(text: model.deviceConnected ? "Connected" : "Not connected", tint: model.deviceConnected ? .green : .secondary)
       } else {
-        Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+        HelperAction(agent: agent)
       }
     }
     .padding(.vertical, 6)
@@ -75,7 +77,7 @@ struct SensorCard: View {
   }
 
   private var summary: String {
-    guard model.daemonRunning else { return "The background helper has stopped. Allow MacTouch under Login Items." }
+    guard model.daemonRunning else { return agent.stoppedReason }
     guard model.deviceConnected else { return "Plug it in with a USB-C cable that carries data." }
     var parts: [String] = []
     if let firmware = model.firmware { parts.append("Firmware \(firmware)") }

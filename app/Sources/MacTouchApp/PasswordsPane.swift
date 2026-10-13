@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 /// left alone.
 struct PasswordsPane: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
   @State private var draft: TargetDraft?
   @State private var pickError: String?
 
@@ -38,8 +39,14 @@ struct PasswordsPane: View {
           ForEach(targets, id: \.self) { target in
             row(target)
           }
+        } else if model.daemonRunning {
+          Text("Reading…").foregroundStyle(.secondary)
         } else {
-          Text(model.daemonRunning ? "Reading…" : "MacTouch's background service is not running.").foregroundStyle(.secondary)
+          HStack {
+            Text(agent.stoppedReason).foregroundStyle(.secondary)
+            Spacer()
+            HelperAction(agent: agent)
+          }
         }
         HStack {
           Button("Add App…", action: pickApp)

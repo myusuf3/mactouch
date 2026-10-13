@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import SwiftUI
 
 /// The daemon's launch agent, the plist inside this bundle that names
 /// `mactouchd` next to the app. Registering it through SMAppService starts
@@ -39,6 +40,12 @@ final class DaemonAgent: ObservableObject {
     SMAppService.openSystemSettingsLoginItems()
   }
 
+  /// Why mactouchd is not running, for the line beside `HelperAction`.
+  var stoppedReason: String {
+    if status == .requiresApproval { return "Allow MacTouch under Login Items so its background helper can run." }
+    return lastError ?? "Starting the background helper…"
+  }
+
   /// scripts/install.sh wrote a plist with the same label to
   /// ~/Library/LaunchAgents. Two agents cannot share a label, so the app
   /// takes over: unload it and remove it. install.sh is the path for a
@@ -54,5 +61,25 @@ final class DaemonAgent: ObservableObject {
     bootout.waitUntilExit()
     try? FileManager.default.removeItem(atPath: plist)
     NSLog("daemon agent: retired the install.sh launch agent, the bundled one takes over")
+  }
+}
+
+/// The way back while mactouchd is not running. Login Items lists the
+/// helper for as long as it is registered, even after launchd has dropped
+/// it, so only an approval still pending sends people there; otherwise
+/// registering again brings it back.
+struct HelperAction: View {
+  @ObservedObject var agent: DaemonAgent
+
+  var body: some View {
+    if agent.status == .requiresApproval {
+      Button("Open Login Items…") { agent.openLoginItems() }
+    } else if agent.lastError != nil {
+      Button("Try Again") { agent.register() }
+    } else {
+      ProgressView()
+        .controlSize(.small)
+        .onAppear { agent.register() }
+    }
   }
 }
