@@ -176,7 +176,7 @@ public final class DaemonModel: ObservableObject {
   /// or nil; tests stand in for the prompt.
   public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
               bundledFirmware: FirmwareImage? = nil, tools: BundledTools? = nil,
-              pamDirectory: String = "/etc/pam.d", keyDirectory: String = "/etc/mactouch",
+              pamDirectory: String = "/etc/pam.d", keyDirectory: String = PAMConfig.keyDirectory,
               commandLineLink: String = "/usr/local/bin/mactouch",
               administrator: ((_ command: [String], _ prompt: String) -> String?)? = nil) {
     self.path = path
@@ -638,8 +638,7 @@ public final class DaemonModel: ObservableObject {
   /// at the command's path. Files only, so it works with the daemon down.
   private func loadInstallState() {
     let services = PAMConfig.services(in: pamDirectory)
-    let keyBoard = (try? String(contentsOfFile: "\(keyDirectory)/\(NSUserName()).sensor", encoding: .utf8))?
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let keyBoard = PAMConfig.keyBoard(in: keyDirectory)
     let tool = tools.map { CommandLineTool.status(at: commandLineLink, for: $0.cli) }
     publish { model in
       model.pamServices = services
