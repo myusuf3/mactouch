@@ -225,6 +225,29 @@ private func fakeDaemon(recording received: Received, at path: String? = nil, se
     try await waitUntil { model.names == [1: "Thumb"] }
   }
 
+  @Test @MainActor func followsFingersChangedElsewhere() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { model.slots == [1, 3] && model.boardSerial != nil }
+    model.rename(1, to: "Thumb")
+    model.rename(3, to: "Index")
+
+    // `mactouch delete slot=1` in Terminal, with Settings open.
+    server.broadcast(ControlLine.evt("slots", [("used", "3"), ("capacity", "20")]))
+    try await waitUntil { model.slots == [3] }
+    // Whatever is enrolled into slot 1 next is another finger.
+    #expect(model.names == [3: "Index"])
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { reopened.boardSerial != nil }
+    #expect(reopened.names == [3: "Index"])
+  }
+
   @Test @MainActor func announcesASensorThatReplacesTheLastOne() async throws {
     let sensor = FakeSensor()
     let server = try fakeDaemon(recording: Received(), sensor: sensor)

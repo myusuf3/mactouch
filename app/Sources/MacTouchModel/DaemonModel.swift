@@ -273,11 +273,19 @@ public final class DaemonModel: ObservableObject {
     guard let client = try? ControlClient(path: path) else { return }
     defer { client.close() }
     guard let reply = try? client.request(ControlRequest(verb: "slots")) else { return }
+    applySlots(reply)
+  }
+
+  /// The sensor's own list of used slots, from `slots` or from `evt slots`
+  /// after any client enrolled or deleted. A name whose slot is gone would
+  /// otherwise label whichever finger is enrolled there next.
+  private func applySlots(_ reply: Fields) {
     let used = reply["used"]?.split(separator: ",").compactMap { Int($0) } ?? []
     let capacity = reply.int("capacity")
     publish { model in
       model.slots = used
       if let capacity { model.capacity = capacity }
+      for slot in model.names.keys where !used.contains(slot) { model.rename(slot, to: "") }
     }
   }
 
@@ -690,6 +698,9 @@ public final class DaemonModel: ObservableObject {
       refreshStatus()
       loadSlots()
       loadSmartCard()
+    case "slots":
+      applySlots(fields)
+      refreshStatus()
     case "ring":
       publish { $0.ring = fields["state"] }
       refreshStatus()

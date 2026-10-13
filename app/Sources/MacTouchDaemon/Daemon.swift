@@ -253,8 +253,10 @@ final class Daemon {
 
     case "enroll":
       guard let slot = request.int("slot"), (1...20).contains(slot) else { return fail("slot") }
-      runLong(verb, connection, timeout: 50) { device in
-        try device.request(.enroll(slot: slot), timeout: 50)
+      runLong(verb, connection, timeout: 50) { [weak self] device in
+        let fields = try device.request(.enroll(slot: slot), timeout: 50)
+        self?.announceSlots(device)
+        return fields
       }
 
     case "pair":
@@ -309,7 +311,8 @@ final class Daemon {
         passthrough(.deleteAll, verb, connection)
       } else if let slot = request.int("slot") {
         passthrough(.delete(slot: slot), verb, connection)
-      } else { fail("slot") }
+      } else { return fail("slot") }
+      if busy == nil, let device = manager.device { announceSlots(device) }
 
     case "slots": passthrough(.slots, verb, connection)
     case "gpio": passthrough(.gpio, verb, connection)
@@ -348,6 +351,13 @@ final class Daemon {
     default:
       fail("unknown")
     }
+  }
+
+  /// `evt slots` with the sensor's list, after any client enrolled or
+  /// deleted, so every other client shows the fingers the sensor has.
+  private func announceSlots(_ device: Device) {
+    guard let fields = try? device.request(.slots) else { return }
+    server.broadcast(ControlLine.evt("slots", fields.values.keys.sorted().map { ($0, fields.values[$0]!) }))
   }
 
   /// A short device command answered inline.

@@ -123,7 +123,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled`. While password mode is armed it disarms instead, until focus moves to another field |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |
-| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent [serial=MT-...]`, `evt ring state=<mode>:<colour>` and, around every identify and every armed password field, `evt request state=pending kind=plain\|nonce\|password reason=<text>` then `evt request state=done kind=...` |
+| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent [serial=MT-...]`, `evt slots used=... capacity=N` after any client's `enroll` or `delete` succeeds, `evt ring state=<mode>:<colour>` and, around every identify and every armed password field, `evt request state=pending kind=plain\|nonce\|password reason=<text>` then `evt request state=done kind=...` |
 
 `identify` from the socket posts a macOS notification with the reason text so
 the user knows what they are approving, unless a `hello ui=1` client is
