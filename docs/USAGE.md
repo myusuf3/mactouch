@@ -186,7 +186,7 @@ mactouch reboot
 ## sudo with a fingerprint
 
 ```
-sudo scripts/pam-install.sh                 # pair, store the key root-only, enable for sudo
+sudo scripts/pam-install.sh                 # pair, store the key root-only, enable for sudo (again for a new board)
 sudo scripts/pam-install.sh --service su    # any other PAM service
 sudo scripts/pam-install.sh --repair        # pair again after a reflash that lost the key
 sudo scripts/pam-uninstall.sh [--purge]     # remove; --purge also deletes the stored key
@@ -200,7 +200,9 @@ also falls through. Twenty seconds per request.
 
 Pairing needs a touch and the device releases its key once per boot, so a
 failed install means a replug before retrying. The key lives at
-`/etc/mactouch/<user>.key`, root only. Reflashing does not change it;
+`/etc/mactouch/<user>.key`, root only, with the board it came from named in
+`<user>.sensor` beside it (ADR-0024). Running the install with a different
+board attached pairs that one instead. Reflashing does not change the key;
 erasing NVS does, and then `--repair` pairs again.
 
 On macOS the sudo stack includes `/etc/pam.d/sudo_local`, which survives OS
@@ -250,8 +252,13 @@ password field.
 
 **`mactouch status` says the device is not responding, or hangs, or the
 daemon logs timeouts.** The board's USB link has died; the yellow heartbeat
-LED tells you whether the firmware itself is alive. Unplug and replug the
-board. If it recurs, open an issue with the log.
+LED tells you whether the firmware itself is alive. A Mac waking from sleep
+can leave the link like this while the board still enumerates. mactouchd
+pings the board every 20 seconds and on every wake and, after two timeouts
+in a row, resets the board's USB as a replug would; the log says "device
+stopped answering; resetting its USB". If the firmware itself hangs, its
+watchdog restarts the board within 10 seconds. If that does not bring it back, unplug and replug the
+board, and if it recurs, open an issue with the log.
 
 **`--direct` says the port is held by another process.** The daemon has it,
 as intended. Drop `--direct`, or `scripts/daemon.sh stop` first.

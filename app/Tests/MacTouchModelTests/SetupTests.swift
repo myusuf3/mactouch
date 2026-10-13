@@ -24,7 +24,7 @@ private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> B
 }
 
 /// A connected sensor with two fingers and a card that has no keys yet.
-private func fakeDaemon() throws -> ControlServer {
+private func fakeDaemon(serial: String = "MT-TEST") throws -> ControlServer {
   let server = ControlServer(path: NSTemporaryDirectory() + "mactouch-setup-\(UUID().uuidString.prefix(8)).sock")
   server.handler = { request, connection in
     switch request.verb {
@@ -34,7 +34,7 @@ private func fakeDaemon() throws -> ControlServer {
     case "status":
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "on:cyan"), ("layers", "idle"), ("monitors", "lock,mic,camera"),
-        ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.2.2"),
+        ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.2.2"), ("serial", serial),
       ]))
     case "piv":
       connection.send(ControlLine.ok("piv", [("enabled", "yes"), ("identity", "no"), ("pin", "default"), ("retries", "3"), ("flash", "encrypted")]))
@@ -46,19 +46,29 @@ private func fakeDaemon() throws -> ControlServer {
   return server
 }
 
-/// A scratch stand-in for /etc/pam.d and /usr/local/bin, gone afterwards.
+/// A scratch stand-in for /etc/pam.d, /etc/mactouch and /usr/local/bin,
+/// gone afterwards.
 private struct Scratch {
   let root = NSTemporaryDirectory() + "mactouch-scratch-\(UUID().uuidString.prefix(8))"
   var pam: String { root + "/pam.d" }
+  var keys: String { root + "/mactouch" }
   var link: String { root + "/bin/mactouch" }
 
   init() throws {
     try FileManager.default.createDirectory(atPath: pam, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(atPath: keys, withIntermediateDirectories: true)
   }
 
-  /// What pam-install.sh leaves behind for sudo.
-  func turnOnSudo() {
+  /// What pam-install.sh leaves behind for sudo: the module line and, from
+  /// installs that name it, the board the stored key belongs to.
+  func turnOnSudo(pairedWith board: String? = "MT-TEST") {
     try? "auth       sufficient     \(PAMConfig.module)\n".write(toFile: pam + "/sudo_local", atomically: true, encoding: .utf8)
+    let sensor = keys + "/\(NSUserName()).sensor"
+    if let board {
+      try? "\(board)\n".write(toFile: sensor, atomically: true, encoding: .utf8)
+    } else {
+      try? FileManager.default.removeItem(atPath: sensor)
+    }
   }
 
   func turnOffSudo() {
@@ -80,7 +90,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     let scratch = try Scratch()
     defer { scratch.remove() }
     let prompts = Prompts()
-    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, commandLineLink: scratch.link) { words, prompt in
+    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { words, prompt in
       prompts.append(words, prompt)
       scratch.turnOnSudo()
       return nil
@@ -106,7 +116,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     defer { scratch.remove() }
     scratch.turnOnSudo()
     let prompts = Prompts()
-    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, commandLineLink: scratch.link) { words, prompt in
+    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { words, prompt in
       prompts.append(words, prompt)
       scratch.turnOffSudo()
       return nil
@@ -127,7 +137,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     defer { scratch.remove() }
     // su still uses the module after sudo has been turned off.
     try "auth       sufficient     \(PAMConfig.module)\n".write(toFile: scratch.pam + "/su", atomically: true, encoding: .utf8)
-    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, commandLineLink: scratch.link)
+    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link)
     model.refreshHealth()
     try await waitUntil { model.pamServices == ["su"] }
     #expect(!model.isDone(.sudo))
@@ -139,7 +149,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     defer { server.stop() }
     let scratch = try Scratch()
     defer { scratch.remove() }
-    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, commandLineLink: scratch.link) { _, _ in
+    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { _, _ in
       "Pairing failed. The device releases its key once per boot; replug it and run again."
     }
     try await waitUntil { model.daemonRunning }
@@ -154,7 +164,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     let scratch = try Scratch()
     defer { scratch.remove() }
     let prompts = Prompts()
-    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, commandLineLink: scratch.link) { words, _ in prompts.append(words); return nil }
+    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { words, _ in prompts.append(words); return nil }
     try await waitUntil { model.daemonRunning }
     #expect(!model.canChangeSudo)
     model.enableSudo()
@@ -173,7 +183,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     defer { server.stop() }
     let scratch = try Scratch()
     defer { scratch.remove() }
-    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, commandLineLink: scratch.link)
+    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link)
     #expect(!model.isDone(.connect))
     try await waitUntil { model.deviceConnected && model.prints == 2 }
     model.refreshSmartCard()
@@ -190,6 +200,34 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     model.refreshHealth()
     try await waitUntil { model.pamServices != nil }
     #expect(model.needsSetup == false)
+  }
+
+  @Test @MainActor func sudoCountsOnlyWhenPairedWithTheAttachedSensor() async throws {
+    let server = try fakeDaemon(serial: "MT-NEW")
+    defer { server.stop() }
+    let scratch = try Scratch()
+    defer { scratch.remove() }
+    scratch.turnOnSudo(pairedWith: "MT-OLD")
+    let model = DaemonModel(path: server.path, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link)
+    model.refreshHealth()
+    try await waitUntil { model.boardSerial == "MT-NEW" && model.sudoKeyBoard == "MT-OLD" }
+    #expect(model.sudoByFingerprint)
+    #expect(model.sudoPairedWithAnotherBoard)
+    #expect(!model.isDone(.sudo))
+    // Sudo is still set up on this Mac; only the pairing is out of date.
+    #expect(model.needsSetup == false)
+
+    // A key stored before keys named their board could be any board's.
+    scratch.turnOnSudo(pairedWith: nil)
+    model.refreshInstallState()
+    try await waitUntil { model.sudoKeyBoard == nil }
+    #expect(model.sudoPairedWithAnotherBoard)
+    #expect(!model.isDone(.sudo))
+
+    scratch.turnOnSudo(pairedWith: "MT-NEW")
+    model.refreshInstallState()
+    try await waitUntil { model.isDone(.sudo) }
+    #expect(!model.sudoPairedWithAnotherBoard)
   }
 
   @Test func administratorErrorsReadAsSentences() {
@@ -231,7 +269,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     let scratch = try Scratch()
     defer { scratch.remove() }
     let prompts = Prompts()
-    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, commandLineLink: scratch.link) { words, prompt in
+    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { words, prompt in
       prompts.append(words, prompt)
       // Run what root would run, here as this user in the scratch folder.
       let process = Process()
@@ -262,7 +300,7 @@ private let tools = BundledTools(pamInstall: "/App/Resources/pam/pam-install.sh"
     try FileManager.default.createDirectory(atPath: scratch.root + "/bin", withIntermediateDirectories: true)
     try "#!/bin/sh\n".write(toFile: scratch.link, atomically: true, encoding: .utf8)
     let prompts = Prompts()
-    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, commandLineLink: scratch.link) { words, _ in
+    let model = DaemonModel(path: server.path, tools: tools, pamDirectory: scratch.pam, keyDirectory: scratch.keys, commandLineLink: scratch.link) { words, _ in
       prompts.append(words)
       return nil
     }

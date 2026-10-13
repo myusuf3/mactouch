@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import MacTouchKit
 
 let protocolVersion = 1
@@ -20,6 +20,10 @@ final class Daemon {
   var uiClients: Set<UUID> = []
   var expiryTimer: DispatchSourceTimer?
   var monitors: Monitors!
+  var linkTimer: DispatchSourceTimer?
+  /// How often an idle link is pinged. A link that stops answering for any
+  /// reason is reset by LinkWatch within about one interval of this.
+  static let linkCheckInterval: DispatchTimeInterval = .seconds(20)
 
   // Password mode, PasswordMode.swift.
   var unlockMode: UnlockMode = .pin
@@ -85,6 +89,23 @@ final class Daemon {
       }
     }
     manager.start()
+    // The board's serial link can come back from the Mac's sleep wedged.
+    // Check it on waking, before the lock screen needs a touch to type.
+    NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                                                      queue: nil) { [weak self] _ in
+      log("woke from sleep; checking the device link")
+      self?.manager.checkLink()
+    }
+    // Long commands own the link and answer when they end, so only an idle
+    // link is checked.
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + Self.linkCheckInterval, repeating: Self.linkCheckInterval)
+    timer.setEventHandler { [weak self] in
+      guard let self, self.busy == nil else { return }
+      self.manager.checkLink()
+    }
+    linkTimer = timer
+    timer.resume()
   }
 
   // MARK: ring
@@ -102,7 +123,13 @@ final class Daemon {
     unlockMode = (try? device.request(.piv("STATUS")))?["mode"].flatMap(UnlockMode.init) ?? .pin
     deviceForgotArming()
     updateArming()
-    server.broadcast(ControlLine.evt("device", [("state", "connected")]))
+    server.broadcast(ControlLine.evt("device", connectedFields))
+  }
+
+  /// `state=connected` with the board's serial number, which tells clients
+  /// whether the same board came back or another one took its place.
+  var connectedFields: [(String, String)] {
+    [("state", "connected")] + (manager.serial.map { [("serial", $0)] } ?? [])
   }
 
   func setLayer(_ layer: RingLayer, _ state: RingState?) {
@@ -160,6 +187,7 @@ final class Daemon {
         ("monitors", monitors.enabledNames.joined(separator: ",")),
         ("busy", busy ?? "none"),
       ]
+      if let serial = manager.serial { fields.append(("serial", serial)) }
       if busy == nil, let device = manager.device, let status = try? device.request(.status) {
         for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv", "slot", "probation"] {
           if let value = status[key] { fields.append((key, value)) }
@@ -225,15 +253,21 @@ final class Daemon {
 
     case "enroll":
       guard let slot = request.int("slot"), (1...20).contains(slot) else { return fail("slot") }
-      runLong(verb, connection, timeout: 50) { device in
-        try device.request(.enroll(slot: slot), timeout: 50)
+      runLong(verb, connection, timeout: 50) { [weak self] device in
+        let fields = try device.request(.enroll(slot: slot), timeout: 50)
+        self?.announceSlots(device)
+        return fields
       }
 
     case "pair":
       let seconds = request.double("timeout") ?? 30
+      let serial = manager.serial
       runLong(verb, connection, timeout: seconds + 3) { device in
         postNotification(title: "mactouch", body: "Touch to release the device key")
-        return try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
+        var fields = try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
+        // Whoever stores the key keeps this beside it, to know which board it opens.
+        fields.values["serial"] = serial
+        return fields
       }
 
     case "piv" where request.positional.first == "mode":
@@ -277,7 +311,8 @@ final class Daemon {
         passthrough(.deleteAll, verb, connection)
       } else if let slot = request.int("slot") {
         passthrough(.delete(slot: slot), verb, connection)
-      } else { fail("slot") }
+      } else { return fail("slot") }
+      if busy == nil, let device = manager.device { announceSlots(device) }
 
     case "slots": passthrough(.slots, verb, connection)
     case "gpio": passthrough(.gpio, verb, connection)
@@ -307,7 +342,7 @@ final class Daemon {
 
     case "events":
       connection.subscribed = true
-      connection.send(ControlLine.evt("device", [("state", manager.isConnected ? "connected" : "absent")]))
+      connection.send(ControlLine.evt("device", manager.isConnected ? connectedFields : [("state", "absent")]))
 
     case "hello":
       if request["ui"] == "1" { uiClients.insert(connection.id) }
@@ -316,6 +351,13 @@ final class Daemon {
     default:
       fail("unknown")
     }
+  }
+
+  /// `evt slots` with the sensor's list, after any client enrolled or
+  /// deleted, so every other client shows the fingers the sensor has.
+  private func announceSlots(_ device: Device) {
+    guard let fields = try? device.request(.slots) else { return }
+    server.broadcast(ControlLine.evt("slots", fields.values.keys.sorted().map { ($0, fields.values[$0]!) }))
   }
 
   /// A short device command answered inline.

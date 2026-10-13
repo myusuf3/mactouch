@@ -5,14 +5,17 @@
 #       [--module <built pam_mactouch.so>] [--cli <mactouch>]
 #
 # Pairs with the device as the invoking user, stores the device key root-only
-# in /etc/mactouch/<user>.key, installs pam_mactouch.so under
+# in /etc/mactouch/<user>.key with the board's serial number beside it in
+# <user>.sensor, readable so the app can tell whose key it is, installs
+# pam_mactouch.so under
 # /usr/local/lib/pam and adds an `auth sufficient` line at the top of
 # /etc/pam.d/<service>. Everything short of a verified fingerprint falls
 # through to the password, and the original service file is kept next to it.
 #
 # Pairing needs mactouchd running and a touch; the device releases its key
-# once per boot, so a second attempt needs a replug. --repair pairs again
-# even if a key is stored, which is how to rotate after a reflash.
+# once per boot, so a second attempt needs a replug. A stored key is kept
+# only while the attached board is the one it came from; --repair pairs
+# again regardless, which is how to rotate after a reflash.
 #
 # MacTouch.app runs this copy of the script from its bundle behind the
 # administrator prompt (ADR-0021), passing the module it carries, already
@@ -50,6 +53,7 @@ module_src="$here/../pam"
 module_dst="/usr/local/lib/pam/pam_mactouch.so"
 key_dir="/etc/mactouch"
 key_file="$key_dir/$user.key"
+sensor_file="$key_dir/$user.sensor"
 pam_file="/etc/pam.d/$service"
 # Apple includes sudo_local from sudo so local additions survive OS updates;
 # use it unless a config manager owns it (a symlink, as nix-darwin makes), in
@@ -83,23 +87,37 @@ mkdir -p "${module_dst:h}"
 install -m 644 -o root -g wheel "$module_built" "$module_dst"
 print "Installed $module_dst"
 
-if [[ -f "$key_file" ]] && ! $repair; then
-  print "Keeping the stored key at $key_file (use --repair to pair again)"
+board="$(sudo -H -u "$user" "$mactouch" status 2>/dev/null | sed -n 's/^serial=\([A-Za-z0-9-]*\)$/\1/p')" || true
+paired_board="$(cat "$sensor_file" 2>/dev/null)" || true
+if [[ -f "$key_file" ]] && ! $repair && [[ -n "$board" && "$paired_board" == "$board" ]]; then
+  print "Keeping the stored key for $board at $key_file (use --repair to pair again)"
 else
+  if [[ -f "$key_file" ]] && ! $repair; then
+    print "The stored key is not this sensor's; pairing ${board:-the attached sensor} instead"
+  fi
   print "Pairing: touch the sensor when the ring breathes white"
-  key="$(sudo -H -u "$user" "$mactouch" pair --timeout 60 2>/dev/null | sed -n 's/^key=\([0-9a-f]\{64\}\)$/\1/p')" || true
+  reply="$(sudo -H -u "$user" "$mactouch" pair --timeout 60 2>/dev/null)" || true
+  key="$(print -r -- "$reply" | sed -n 's/^key=\([0-9a-f]\{64\}\)$/\1/p')"
+  board="$(print -r -- "$reply" | sed -n 's/^serial=\([A-Za-z0-9-]*\)$/\1/p')"
+  unset reply
   if [[ -z "$key" ]]; then
     print -u2 "Pairing failed. The device releases its key once per boot; replug it and run again."
     exit 1
   fi
   mkdir -p "$key_dir"
-  chmod 700 "$key_dir"
-  umask 077
-  print -r -- "$key" > "$key_file"
+  # The key stays root-only; which board it belongs to is no secret.
+  chmod 755 "$key_dir"
+  (
+    umask 077
+    print -r -- "$key" > "$key_file"
+  )
   chown root:wheel "$key_file"
   chmod 600 "$key_file"
   unset key
-  print "Stored the device key at $key_file (root only)"
+  print -r -- "$board" > "$sensor_file"
+  chown root:wheel "$sensor_file"
+  chmod 644 "$sensor_file"
+  print "Stored the device key for ${board:-the sensor} at $key_file (root only)"
 fi
 
 if grep -qF "$module_dst" "$pam_file"; then

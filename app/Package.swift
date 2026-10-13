@@ -12,7 +12,12 @@ let package = Package(
   ],
   targets: [
     .target(
+      name: "USBReset",
+      linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]
+    ),
+    .target(
       name: "MacTouchKit",
+      dependencies: ["USBReset"],
       linkerSettings: [
         .linkedFramework("IOKit"),
         .linkedFramework("CoreAudio"),

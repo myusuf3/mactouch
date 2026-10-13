@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MacTouchKit
 
@@ -67,6 +68,12 @@ public final class DaemonModel: ObservableObject {
 
   @Published public private(set) var daemonRunning = false
   @Published public private(set) var deviceConnected = false
+  /// The attached board's USB serial number, which tells boards apart; nil
+  /// with no board attached.
+  @Published public private(set) var boardSerial: String?
+  /// The serial of a board attached in place of the last one this Mac saw,
+  /// whose fingers, sudo key and smart card are not this one's.
+  public let boardReplaced = PassthroughSubject<String, Never>()
   @Published public private(set) var sensor: String?
   @Published public private(set) var prints: Int?
   /// The ring as the daemon spells it, `mode:colour[:colour2]`.
@@ -79,9 +86,9 @@ public final class DaemonModel: ObservableObject {
   @Published public private(set) var slots: [Int] = []
   @Published public private(set) var capacity = 20
   @Published public private(set) var enrolment: Enrolment = .idle
-  /// Names people give their fingers, kept in the app's defaults; the
-  /// device knows only slot numbers.
-  @Published public private(set) var names: [Int: String]
+  /// Names people give the attached board's fingers, kept in the app's
+  /// defaults per board; the device knows only slot numbers.
+  @Published public private(set) var names: [Int: String] = [:]
   @Published public private(set) var health: HealthReport?
   @Published public private(set) var request: Request?
   /// Failed attempts during the current request, so the panel can say so.
@@ -107,6 +114,9 @@ public final class DaemonModel: ObservableObject {
   public let tools: BundledTools?
   /// The PAM services that load pam_mactouch, nil until read.
   @Published public private(set) var pamServices: [String]?
+  /// The board whose key sudo verifies with, as pam-install.sh recorded it;
+  /// nil when it recorded none, as installs before boards were named did.
+  @Published public private(set) var sudoKeyBoard: String?
   /// What is at /usr/local/bin/mactouch, nil without the bundled CLI.
   @Published public private(set) var commandLineTool: CommandLineTool?
   @Published public private(set) var sudoTask: AdminTask?
@@ -152,10 +162,13 @@ public final class DaemonModel: ObservableObject {
 
   private let path: String
   private let defaults: UserDefaults
-  private static let namesKey = "slotNames"
+  /// Board serial, then slot as a string, then name.
+  private static let namesKey = "fingerNames"
+  private static let lastBoardKey = "lastBoard"
   private let requests = DispatchQueue(label: "mactouch.requests")
   private let administrator: (_ command: [String], _ prompt: String) -> String?
   private let pamDirectory: String
+  private let keyDirectory: String
   private let commandLineLink: String
 
   /// `administrator` runs one command as root behind the system's
@@ -163,17 +176,19 @@ public final class DaemonModel: ObservableObject {
   /// or nil; tests stand in for the prompt.
   public init(path: String = ControlSocketPath.default, defaults: UserDefaults = .standard,
               bundledFirmware: FirmwareImage? = nil, tools: BundledTools? = nil,
-              pamDirectory: String = "/etc/pam.d", commandLineLink: String = "/usr/local/bin/mactouch",
+              pamDirectory: String = "/etc/pam.d", keyDirectory: String = "/etc/mactouch",
+              commandLineLink: String = "/usr/local/bin/mactouch",
               administrator: ((_ command: [String], _ prompt: String) -> String?)? = nil) {
     self.path = path
     self.defaults = defaults
     self.bundledFirmware = bundledFirmware
     self.tools = tools
     self.pamDirectory = pamDirectory
+    self.keyDirectory = keyDirectory
     self.commandLineLink = commandLineLink
     self.administrator = administrator ?? { Self.runAsAdministrator($0, prompt: $1) }
-    let stored = defaults.dictionary(forKey: Self.namesKey) as? [String: String] ?? [:]
-    names = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
+    // Names kept before they were kept per board could be any board's.
+    defaults.removeObject(forKey: "slotNames")
     let thread = Thread { [weak self] in self?.streamEvents() }
     thread.name = "mactouch.events"
     thread.start()
@@ -231,19 +246,46 @@ public final class DaemonModel: ObservableObject {
   }
 
   public func rename(_ slot: Int, to name: String) {
+    guard let board = boardSerial else { return }
     names[slot] = name.isEmpty ? nil : name
-    defaults.set(Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) }), forKey: Self.namesKey)
+    var stored = storedNames
+    stored[board] = Dictionary(uniqueKeysWithValues: names.map { ("\($0.key)", $0.value) })
+    defaults.set(stored, forKey: Self.namesKey)
+  }
+
+  private func noteBoard(_ board: String?) {
+    guard let board else { return }
+    let last = defaults.string(forKey: Self.lastBoardKey)
+    defaults.set(board, forKey: Self.lastBoardKey)
+    if let last, last != board { boardReplaced.send(board) }
+  }
+
+  private var storedNames: [String: [String: String]] {
+    defaults.dictionary(forKey: Self.namesKey) as? [String: [String: String]] ?? [:]
+  }
+
+  private func names(for board: String?) -> [Int: String] {
+    guard let board, let stored = storedNames[board] else { return [:] }
+    return Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in Int(key).map { ($0, value) } })
   }
 
   private func loadSlots() {
     guard let client = try? ControlClient(path: path) else { return }
     defer { client.close() }
     guard let reply = try? client.request(ControlRequest(verb: "slots")) else { return }
+    applySlots(reply)
+  }
+
+  /// The sensor's own list of used slots, from `slots` or from `evt slots`
+  /// after any client enrolled or deleted. A name whose slot is gone would
+  /// otherwise label whichever finger is enrolled there next.
+  private func applySlots(_ reply: Fields) {
     let used = reply["used"]?.split(separator: ",").compactMap { Int($0) } ?? []
     let capacity = reply.int("capacity")
     publish { model in
       model.slots = used
       if let capacity { model.capacity = capacity }
+      for slot in model.names.keys where !used.contains(slot) { model.rename(slot, to: "") }
     }
   }
 
@@ -596,9 +638,12 @@ public final class DaemonModel: ObservableObject {
   /// at the command's path. Files only, so it works with the daemon down.
   private func loadInstallState() {
     let services = PAMConfig.services(in: pamDirectory)
+    let keyBoard = (try? String(contentsOfFile: "\(keyDirectory)/\(NSUserName()).sensor", encoding: .utf8))?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     let tool = tools.map { CommandLineTool.status(at: commandLineLink, for: $0.cli) }
     publish { model in
       model.pamServices = services
+      model.sudoKeyBoard = keyBoard
       model.commandLineTool = tool
     }
   }
@@ -651,7 +696,11 @@ public final class DaemonModel: ObservableObject {
     case "device":
       publish { $0.deviceConnected = fields["state"] == "connected" }
       refreshStatus()
+      loadSlots()
       loadSmartCard()
+    case "slots":
+      applySlots(fields)
+      refreshStatus()
     case "ring":
       publish { $0.ring = fields["state"] }
       refreshStatus()
@@ -677,9 +726,10 @@ public final class DaemonModel: ObservableObject {
     }
   }
 
-  /// Sensor and finger count only come from `status`, and the daemon omits
-  /// them while a long command owns the device, so a reply without them
-  /// keeps the last known values.
+  /// Sensor, finger count and firmware only come from `status`, and the
+  /// daemon omits them while a long command owns the device, so a reply
+  /// without them keeps the last known values. Losing the board clears
+  /// them, since the next one attached may be another.
   private func refreshStatus() {
     guard let client = try? ControlClient(path: path) else { return }
     defer { client.close() }
@@ -687,6 +737,12 @@ public final class DaemonModel: ObservableObject {
     publish { model in
       model.daemonRunning = true
       model.deviceConnected = status["device"] == "connected"
+      let board = model.deviceConnected ? status["serial"] : nil
+      if board != model.boardSerial {
+        model.boardSerial = board
+        model.names = model.names(for: board)
+        model.noteBoard(board)
+      }
       model.ring = status["ring"]
       model.layers = status["layers"]?.split(separator: ",").map(String.init) ?? []
       model.idle = status["idle"].flatMap(LEDColour.init)
@@ -694,6 +750,9 @@ public final class DaemonModel: ObservableObject {
       if !model.deviceConnected {
         model.sensor = nil
         model.prints = nil
+        model.slots = []
+        model.firmware = nil
+        model.slot = nil
       }
       if let sensor = status["sensor"] { model.sensor = sensor }
       if let firmware = status["fw"] { model.firmware = firmware }

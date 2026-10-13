@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MacTouchKit
 import Testing
@@ -15,6 +16,27 @@ private final class Received: @unchecked Sendable {
   var hellos: Int { lock.lock(); defer { lock.unlock() }; return helloCount }
 }
 
+/// The sensor behind a fake daemon, swapped by tests to stand in for a
+/// different board being plugged in.
+private final class FakeSensor: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _connected = true
+  private var _slots = "1,3"
+  private var _serial = "MT-ONE"
+  var connected: Bool {
+    get { lock.lock(); defer { lock.unlock() }; return _connected }
+    set { lock.lock(); _connected = newValue; lock.unlock() }
+  }
+  var slots: String {
+    get { lock.lock(); defer { lock.unlock() }; return _slots }
+    set { lock.lock(); _slots = newValue; lock.unlock() }
+  }
+  var serial: String {
+    get { lock.lock(); defer { lock.unlock() }; return _serial }
+    set { lock.lock(); _serial = newValue; lock.unlock() }
+  }
+}
+
 @MainActor
 private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> Bool) async throws {
   let deadline = Date().addingTimeInterval(seconds)
@@ -26,20 +48,25 @@ private func waitUntil(seconds: TimeInterval = 5, _ condition: @escaping () -> B
 
 /// A daemon with a connected device, two fingers and a notify layer, that
 /// records every other request and answers `ok`.
-private func fakeDaemon(recording received: Received, at path: String? = nil) throws -> ControlServer {
+private func fakeDaemon(recording received: Received, at path: String? = nil, sensor: FakeSensor = FakeSensor()) throws -> ControlServer {
   let server = ControlServer(path: path ?? NSTemporaryDirectory() + "mactouch-model-\(UUID().uuidString.prefix(8)).sock")
   server.handler = { request, connection in
     switch request.verb {
     case "events":
       connection.subscribed = true
       connection.send(ControlLine.evt("device", [("state", "connected")]))
+    case "status" where !sensor.connected:
+      connection.send(ControlLine.ok("status", [("device", "absent"), ("ring", "on:blue"), ("layers", "idle")]))
     case "status":
       connection.send(ControlLine.ok("status", [
         ("device", "connected"), ("ring", "breathe:red"), ("layers", "idle,privacy,notify"),
         ("monitors", "lock,focus,mic"), ("sensor", "ready"), ("prints", "2"), ("idle", "cyan"), ("fw", "0.1.1"),
+        ("serial", sensor.serial),
       ]))
+    case "slots" where !sensor.connected:
+      connection.send(ControlLine.err("slots", "device"))
     case "slots":
-      connection.send(ControlLine.ok("slots", [("used", "1,3"), ("capacity", "20")]))
+      connection.send(ControlLine.ok("slots", [("used", sensor.slots), ("capacity", "20")]))
     case "enroll":
       received.append(request.line)
       for step in ["touch", "lift", "touch_again", "processing"] {
@@ -117,7 +144,8 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
 
     model.rename(1, to: "Thumb")
     #expect(model.names[1] == "Thumb")
-    #expect(DaemonModel(path: server.path, defaults: defaults).names[1] == "Thumb")
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { reopened.names[1] == "Thumb" }
 
     model.delete(slot: 1)
     try await waitUntil { received.all.count == 2 }
@@ -150,6 +178,111 @@ private func fakeDaemon(recording received: Received, at path: String? = nil) th
     server = try fakeDaemon(recording: received, at: path)
     defer { server.stop() }
     try await waitUntil { received.hellos == 2 }
+  }
+
+  @Test @MainActor func readsTheFingersOfWhicheverSensorIsPluggedIn() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let model = DaemonModel(path: server.path)
+    try await waitUntil { model.slots == [1, 3] }
+
+    sensor.connected = false
+    server.broadcast(ControlLine.evt("device", [("state", "absent")]))
+    try await waitUntil { model.slots.isEmpty }
+    #expect(model.firmware == nil)
+
+    sensor.slots = "2"
+    sensor.connected = true
+    server.broadcast(ControlLine.evt("device", [("state", "connected")]))
+    try await waitUntil { model.slots == [2] }
+  }
+
+  @Test @MainActor func namesFollowTheSensorTheyWereGivenOn() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    // Names kept before they were kept per sensor could be any sensor's.
+    defaults.set(["1": "left thumb"], forKey: "slotNames")
+
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+    #expect(model.names.isEmpty)
+    #expect(defaults.object(forKey: "slotNames") == nil)
+    model.rename(1, to: "Thumb")
+
+    sensor.serial = "MT-TWO"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-TWO")]))
+    try await waitUntil { model.boardSerial == "MT-TWO" }
+    #expect(model.names.isEmpty)
+    model.rename(1, to: "Index")
+
+    sensor.serial = "MT-ONE"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-ONE")]))
+    try await waitUntil { model.names == [1: "Thumb"] }
+  }
+
+  @Test @MainActor func followsFingersChangedElsewhere() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { model.slots == [1, 3] && model.boardSerial != nil }
+    model.rename(1, to: "Thumb")
+    model.rename(3, to: "Index")
+
+    // `mactouch delete slot=1` in Terminal, with Settings open.
+    server.broadcast(ControlLine.evt("slots", [("used", "3"), ("capacity", "20")]))
+    try await waitUntil { model.slots == [3] }
+    // Whatever is enrolled into slot 1 next is another finger.
+    #expect(model.names == [3: "Index"])
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    try await waitUntil { reopened.boardSerial != nil }
+    #expect(reopened.names == [3: "Index"])
+  }
+
+  @Test @MainActor func announcesASensorThatReplacesTheLastOne() async throws {
+    let sensor = FakeSensor()
+    let server = try fakeDaemon(recording: Received(), sensor: sensor)
+    defer { server.stop() }
+    let suite = "mactouch-test-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    var replaced: [String] = []
+    let model = DaemonModel(path: server.path, defaults: defaults)
+    let watching = model.boardReplaced.sink { replaced.append($0) }
+    defer { watching.cancel() }
+    // The first board this Mac sees replaces nothing.
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+
+    // The same board back after a replug is no news.
+    sensor.connected = false
+    server.broadcast(ControlLine.evt("device", [("state", "absent")]))
+    try await waitUntil { model.boardSerial == nil }
+    sensor.connected = true
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-ONE")]))
+    try await waitUntil { model.boardSerial == "MT-ONE" }
+
+    sensor.serial = "MT-TWO"
+    server.broadcast(ControlLine.evt("device", [("state", "connected"), ("serial", "MT-TWO")]))
+    try await waitUntil { model.boardSerial == "MT-TWO" }
+    #expect(replaced == ["MT-TWO"])
+
+    // Remembered across launches.
+    sensor.serial = "MT-ONE"
+    var replacedLater: [String] = []
+    let reopened = DaemonModel(path: server.path, defaults: defaults)
+    let watchingLater = reopened.boardReplaced.sink { replacedLater.append($0) }
+    defer { watchingLater.cancel() }
+    try await waitUntil { replacedLater == ["MT-ONE"] }
   }
 
   @Test @MainActor func reportsHealthFromTheDaemon() async throws {

@@ -28,7 +28,7 @@ struct MacTouchApp: App {
     let loginItem = LoginItem()
     _loginItem = StateObject(wrappedValue: loginItem)
     requestPanel = RequestPanel(model: model)
-    setupWindow = SetupWindow(model: model)
+    setupWindow = SetupWindow(model: model, agent: agent)
     agent.install()
     loginItem.registerOnFirstLaunch()
   }

@@ -2,23 +2,28 @@ import AppKit
 import Combine
 import MacTouchKit
 import MacTouchModel
-import ServiceManagement
 import SwiftUI
 
 /// The setup window, docs/ONBOARDING.md. AppKit owns it rather than a
 /// SwiftUI `Window` scene, which macOS 14 would open at every login; this
-/// one opens once on its own, the first time the app finds sudo not yet
-/// set up, and after that only from the menu.
+/// one opens on its own the first time the app finds sudo not yet set up,
+/// and when a different board is plugged in with steps left to redo, and
+/// otherwise only from the menu.
 final class SetupWindow {
   private let model: DaemonModel
+  private let agent: DaemonAgent
   private let defaults: UserDefaults
   private var window: NSWindow?
   private var firstReport: AnyCancellable?
+  private var replacement: AnyCancellable?
+  private var nextReport: AnyCancellable?
   private static let offeredKey = "setupOffered"
 
-  init(model: DaemonModel, defaults: UserDefaults = .standard) {
+  init(model: DaemonModel, agent: DaemonAgent, defaults: UserDefaults = .standard) {
     self.model = model
+    self.agent = agent
     self.defaults = defaults
+    replacement = model.boardReplaced.sink { [weak self] _ in self?.offerForReplacedBoard() }
     guard !defaults.bool(forKey: Self.offeredKey) else { return }
     // A published value arrives before the property holds it, so the
     // decision waits a turn of the run loop to read the model.
@@ -37,7 +42,7 @@ final class SetupWindow {
       guard case .step(let step) = page else { return false }
       return !model.isDone(step) && !step.isOptional
     } ?? .done
-    window.contentViewController = NSHostingController(rootView: SetupView(model: model, page: page) { [weak window] in
+    window.contentViewController = NSHostingController(rootView: SetupView(model: model, agent: agent, page: page) { [weak window] in
       window?.close()
     })
     window.center()
@@ -48,6 +53,21 @@ final class SetupWindow {
   private func offerOnce() {
     defaults.set(true, forKey: Self.offeredKey)
     if model.needsSetup == true { show(from: .welcome) }
+  }
+
+  /// Another board has its own fingers and needs its own pairing. Once the
+  /// Mac's side has been read again, open on whatever is left to do.
+  private func offerForReplacedBoard() {
+    nextReport = model.$health
+      .dropFirst()
+      .compactMap { $0 }
+      .first()
+      .sink { [weak self] _ in DispatchQueue.main.async { self?.offerIfUnfinished() } }
+    model.refreshHealth()
+  }
+
+  private func offerIfUnfinished() {
+    if SetupStep.allCases.contains(where: { !model.isDone($0) && !$0.isOptional }) { show() }
   }
 
   private func makeWindow() -> NSWindow {
@@ -75,6 +95,7 @@ enum SetupPage: Hashable, CaseIterable {
 
 struct SetupView: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
   @State var page: SetupPage
   var close: () -> Void
   @State private var enrolling = false
@@ -172,11 +193,7 @@ struct SetupView: View {
 
   @ViewBuilder private var connect: some View {
     if !model.daemonRunning {
-      VStack(spacing: 8) {
-        Text("MacTouch's background helper is not running.")
-          .foregroundStyle(.secondary)
-        Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
-      }
+      helper
     } else if model.deviceConnected {
       Done("Connected\(model.firmware.map { " · firmware \($0)" } ?? "")")
     } else {
@@ -184,6 +201,32 @@ struct SetupView: View {
         ProgressView().controlSize(.small)
         Text("Waiting for the sensor…").foregroundStyle(.secondary)
       }
+    }
+  }
+
+  /// Login Items lists the helper for as long as it is registered, even
+  /// after launchd has dropped it, so only an approval still pending sends
+  /// people there; otherwise registering again brings it back.
+  @ViewBuilder private var helper: some View {
+    if agent.status == .requiresApproval {
+      VStack(spacing: 8) {
+        Waiting("Allow MacTouch under Login Items so its background helper can run.")
+        Button("Open Login Items…") { agent.openLoginItems() }
+      }
+    } else if let error = agent.lastError {
+      VStack(spacing: 8) {
+        Label(error, systemImage: "exclamationmark.triangle.fill")
+          .font(.callout)
+          .foregroundStyle(.red)
+          .multilineTextAlignment(.center)
+        Button("Try Again") { agent.register() }
+      }
+    } else {
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text("Starting the background helper…").foregroundStyle(.secondary)
+      }
+      .onAppear { agent.register() }
     }
   }
 
@@ -248,7 +291,10 @@ struct SetupView: View {
       }
     } else {
       VStack(spacing: 10) {
-        Button("Turn On…") { model.enableSudo() }
+        if model.sudoPairedWithAnotherBoard {
+          Waiting("sudo is paired with a different sensor, so it asks for your password until this one is paired.")
+        }
+        Button(model.sudoPairedWithAnotherBoard ? "Pair This Sensor…" : "Turn On…") { model.enableSudo() }
           .buttonStyle(.borderedProminent)
           .disabled(!model.daemonRunning)
         if case .failed(let reason)? = model.sudoTask, reason != "cancelled" {

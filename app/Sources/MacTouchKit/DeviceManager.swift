@@ -1,4 +1,5 @@
 import Foundation
+import USBReset
 
 /// Keeps one `Device` open for as long as a mactouch is attached, polling for
 /// it while it is absent. Callbacks arrive on the manager's private queue.
@@ -12,12 +13,15 @@ public final class DeviceManager {
   private let pollInterval: TimeInterval
   private var timer: DispatchSourceTimer?
   private var current: Device?
+  private var currentSerial: String?
   private var running = false
 
   public init(pollInterval: TimeInterval = 1) { self.pollInterval = pollInterval }
 
   public var device: Device? { queue.sync { current } }
   public var isConnected: Bool { device != nil }
+  /// The connected board's USB serial number, which identifies the board.
+  public var serial: String? { queue.sync { currentSerial } }
 
   public func start() {
     queue.async { [self] in
@@ -42,6 +46,18 @@ public final class DeviceManager {
     }
   }
 
+  /// Pings the device so a link that has died, while the Mac slept or for
+  /// any other reason, is noticed and reset before anything needs it. Two
+  /// misses are what LinkWatch takes, so it asks twice.
+  public func checkLink() {
+    guard let device else { return }
+    DispatchQueue.global().async {
+      for _ in 0..<2 {
+        if (try? device.request(.ping, timeout: 2)) != nil { return }
+      }
+    }
+  }
+
   /// Runs `body` with the attached device, or throws `DeviceError.notFound`.
   public func withDevice<T>(_ body: (Device) throws -> T) throws -> T {
     guard let device = self.device else { throw DeviceError.notFound }
@@ -50,23 +66,33 @@ public final class DeviceManager {
 
   private func scan() {
     guard current == nil else { return }
-    let paths = DeviceLocator.calloutPaths()
-    guard let path = paths.first else { return }
-    if paths.count > 1 { onLog?("several devices attached, using \(path)") }
+    let boards = DeviceLocator.attached()
+    guard let board = boards.first else { return }
+    let path = board.path
+    if boards.count > 1 { onLog?("several devices attached, using \(path)") }
     do {
       let device = try Device(path: path)
       device.onEvent = { [weak self] name, fields in self?.onEvent?(name, fields) }
+      // A reset drops the board off the bus; the scan picks it up again.
+      device.onDeaf = { [weak self] in
+        self?.onLog?("device stopped answering; resetting its USB")
+        if !usb_reenumerate(UInt16(DeviceLocator.vendorID), UInt16(DeviceLocator.productID)) {
+          self?.onLog?("USB reset refused; replug the device")
+        }
+      }
       device.onDisconnect = { [weak self] in
         guard let self else { return }
         self.queue.async {
           guard self.current === device else { return }
           self.current = nil
+          self.currentSerial = nil
           self.onLog?("device disconnected")
           self.onDisconnect?()
         }
       }
       current = device
-      onLog?("device connected at \(path)")
+      currentSerial = board.serial
+      onLog?("device \(board.serial ?? "without a serial number") connected at \(path)")
       onConnect?(device)
     } catch {
       // The node can exist before the driver is ready; try again next tick.
