@@ -20,7 +20,7 @@ The socket protocol in `docs/PROTOCOL.md` is unchanged. Three details are settle
 
 **The reason for a fingerprint request is shown as a macOS notification.** The design had the app draw its own HUD. Until there is an app, the daemon posts a standard notification with the requester's text, and the ring colour says a request is pending: blue for an ordinary request, white for one carrying a nonce, which is how PAM asks. The UI can take over this job later without a protocol change.
 
-**Flashing stops the daemon.** `scripts/flash.sh` unloads the launch agent before touching the port and loads it again afterwards, so the daemon never fights esptool for the device.
+**Flashing stops the daemon.** `scripts/flash.sh` unloads the launch agent before touching the port and loads it again however the flash ends, failed or interrupted included, so the daemon never fights esptool for the device.
 
 ## Consequences
 
