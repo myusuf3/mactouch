@@ -103,12 +103,13 @@ are one at a time and a second gets `err ... reason=busy`.
 
 | command | response |
 | -- | -- |
-| `status` | `ok status proto=1 device=connected\|absent sensor=... prints=N ring=... layers=idle,privacy monitors=lock,mic,camera` |
+| `status` | `ok status proto=1 device=connected\|absent [serial=MT-...] sensor=... prints=N ring=... layers=idle,privacy monitors=lock,mic,camera`. `serial` is the board's USB serial number, derived from its chip, so it tells one board from another |
 | `led <mode> [<colour>] [<colour2>]` | `ok led` (sets the notify layer with no expiry) |
 | `notify <colour> for=<seconds> [mode=<mode>]` | `ok notify` (mode defaults to `breathe`) |
 | `clear` | `ok clear` (drops the notify layer) |
 | `idle <colour>` | `ok idle` |
 | `identify timeout=<s> [nonce=<hex32>] [reason=<text>]` | `ok identify slot=N score=S [mac=<hex64>]` or `err identify reason=...` |
+| `pair [timeout=<s>]` | `ok pair key=<hex64> serial=MT-...` or `err pair reason=...`, a long command; `serial` names the board the key belongs to |
 | `enroll slot=<n>` | progress lines `evt enroll step=...` then `ok enroll` or `err enroll` |
 | `delete slot=<n>\|all`, `slots`, `gpio`, `selftest` | as device |
 | `piv status\|on\|off\|genkey\|reset` | as device; `genkey` and `reset` are long commands |
@@ -122,7 +123,7 @@ are one at a time and a second gets `err ... reason=busy`.
 | `cancel` | `ok cancel`. Works while `identify`, `enroll` or `pair` is in flight, which then ends with `reason=cancelled`. While password mode is armed it disarms instead, until focus moves to another field |
 | `monitor <name> on\|off` | `ok monitor` (names: lock, mic, camera; persisted) |
 | `hello ui=1` | `ok hello proto=1`. The client shows fingerprint requests itself; the daemon posts no notification while it stays connected |
-| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent`, `evt ring state=<mode>:<colour>` and, around every identify and every armed password field, `evt request state=pending kind=plain\|nonce\|password reason=<text>` then `evt request state=done kind=...` |
+| `events` | `evt ...` lines until disconnect. Device events pass through; the daemon adds `evt device state=connected\|absent [serial=MT-...]`, `evt ring state=<mode>:<colour>` and, around every identify and every armed password field, `evt request state=pending kind=plain\|nonce\|password reason=<text>` then `evt request state=done kind=...` |
 
 `identify` from the socket posts a macOS notification with the reason text so
 the user knows what they are approving, unless a `hello ui=1` client is

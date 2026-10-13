@@ -13,12 +13,15 @@ public final class DeviceManager {
   private let pollInterval: TimeInterval
   private var timer: DispatchSourceTimer?
   private var current: Device?
+  private var currentSerial: String?
   private var running = false
 
   public init(pollInterval: TimeInterval = 1) { self.pollInterval = pollInterval }
 
   public var device: Device? { queue.sync { current } }
   public var isConnected: Bool { device != nil }
+  /// The connected board's USB serial number, which identifies the board.
+  public var serial: String? { queue.sync { currentSerial } }
 
   public func start() {
     queue.async { [self] in
@@ -63,9 +66,10 @@ public final class DeviceManager {
 
   private func scan() {
     guard current == nil else { return }
-    let paths = DeviceLocator.calloutPaths()
-    guard let path = paths.first else { return }
-    if paths.count > 1 { onLog?("several devices attached, using \(path)") }
+    let boards = DeviceLocator.attached()
+    guard let board = boards.first else { return }
+    let path = board.path
+    if boards.count > 1 { onLog?("several devices attached, using \(path)") }
     do {
       let device = try Device(path: path)
       device.onEvent = { [weak self] name, fields in self?.onEvent?(name, fields) }
@@ -81,12 +85,14 @@ public final class DeviceManager {
         self.queue.async {
           guard self.current === device else { return }
           self.current = nil
+          self.currentSerial = nil
           self.onLog?("device disconnected")
           self.onDisconnect?()
         }
       }
       current = device
-      onLog?("device connected at \(path)")
+      currentSerial = board.serial
+      onLog?("device \(board.serial ?? "without a serial number") connected at \(path)")
       onConnect?(device)
     } catch {
       // The node can exist before the driver is ready; try again next tick.

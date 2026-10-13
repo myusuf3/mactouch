@@ -123,7 +123,13 @@ final class Daemon {
     unlockMode = (try? device.request(.piv("STATUS")))?["mode"].flatMap(UnlockMode.init) ?? .pin
     deviceForgotArming()
     updateArming()
-    server.broadcast(ControlLine.evt("device", [("state", "connected")]))
+    server.broadcast(ControlLine.evt("device", connectedFields))
+  }
+
+  /// `state=connected` with the board's serial number, which tells clients
+  /// whether the same board came back or another one took its place.
+  var connectedFields: [(String, String)] {
+    [("state", "connected")] + (manager.serial.map { [("serial", $0)] } ?? [])
   }
 
   func setLayer(_ layer: RingLayer, _ state: RingState?) {
@@ -181,6 +187,7 @@ final class Daemon {
         ("monitors", monitors.enabledNames.joined(separator: ",")),
         ("busy", busy ?? "none"),
       ]
+      if let serial = manager.serial { fields.append(("serial", serial)) }
       if busy == nil, let device = manager.device, let status = try? device.request(.status) {
         for key in ["fw", "sensor", "prints", "touch", "watch", "idle", "piv", "slot", "probation"] {
           if let value = status[key] { fields.append((key, value)) }
@@ -252,9 +259,13 @@ final class Daemon {
 
     case "pair":
       let seconds = request.double("timeout") ?? 30
+      let serial = manager.serial
       runLong(verb, connection, timeout: seconds + 3) { device in
         postNotification(title: "mactouch", body: "Touch to release the device key")
-        return try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
+        var fields = try device.request(.pair(timeoutMs: Int(seconds * 1000)), timeout: seconds + 3)
+        // Whoever stores the key keeps this beside it, to know which board it opens.
+        fields.values["serial"] = serial
+        return fields
       }
 
     case "piv" where request.positional.first == "mode":
@@ -328,7 +339,7 @@ final class Daemon {
 
     case "events":
       connection.subscribed = true
-      connection.send(ControlLine.evt("device", [("state", manager.isConnected ? "connected" : "absent")]))
+      connection.send(ControlLine.evt("device", manager.isConnected ? connectedFields : [("state", "absent")]))
 
     case "hello":
       if request["ui"] == "1" { uiClients.insert(connection.id) }
