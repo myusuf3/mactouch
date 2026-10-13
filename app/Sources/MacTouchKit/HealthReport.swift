@@ -96,7 +96,8 @@ public struct HealthReport: Sendable {
     case nil: break
     }
 
-    checks.append(pamCheck())
+    checks.append(sudoCheck(installed: FileManager.default.fileExists(atPath: PAMConfig.module),
+                            services: PAMConfig.services(), keyBoard: PAMConfig.keyBoard(), board: status?["serial"]))
 
     if let prints = status?.int("prints") {
       checks.append(prints > 0
@@ -165,16 +166,21 @@ public struct HealthReport: Sendable {
     return HealthCheck(.ok, "autostart", "launch agent from \(source), mactouchd starts at login")
   }
 
-  /// Which PAM services name the module. The key itself is root-only, so this
-  /// reports installation, not pairing state.
-  private static func pamCheck() -> HealthCheck {
-    guard FileManager.default.fileExists(atPath: PAMConfig.module) else {
+  /// Which PAM services name the module, and whether the key they check
+  /// against came from `board`, the one attached. A key from another board
+  /// leaves sudo asking for the password, ADR-0024. `board` is nil when
+  /// nothing reported the attached board's serial.
+  static func sudoCheck(installed: Bool, services: [String], keyBoard: String?, board: String?) -> HealthCheck {
+    guard installed else {
       return HealthCheck(.off, "sudo", "pam_mactouch not installed; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
     }
-    let services = PAMConfig.services()
-    return services.isEmpty
-      ? HealthCheck(.warn, "sudo", "module installed but no PAM service uses it; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
-      : HealthCheck(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
+    guard !services.isEmpty else {
+      return HealthCheck(.warn, "sudo", "module installed but no PAM service uses it; Set Up MacTouch… in the menu, or sudo scripts/pam-install.sh")
+    }
+    if let board, keyBoard != board {
+      return HealthCheck(.warn, "sudo", "paired with another sensor, so sudo asks for the password; Pair This Sensor… in the menu, or sudo scripts/pam-install.sh")
+    }
+    return HealthCheck(.ok, "sudo", "fingerprint enabled for \(services.joined(separator: ", "))")
   }
 
   private static func deviceCheck(connected: Bool, firmware: String?) -> HealthCheck {

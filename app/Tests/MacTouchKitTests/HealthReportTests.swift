@@ -115,6 +115,21 @@ import Testing
     #expect(missing?.detail == "password mode but no password saved; mactouch password set")
   }
 
+  @Test func sudoRowKnowsWhichSensorItWasPairedWith() {
+    let check = { (keyBoard: String?, board: String?) in
+      HealthReport.sudoCheck(installed: true, services: ["sudo_local"], keyBoard: keyBoard, board: board)
+    }
+    #expect(check("MT-A", "MT-A").verdict == .ok)
+    #expect(check("MT-A", "MT-B").verdict == .warn)
+    #expect(check("MT-A", "MT-B").detail.contains("Pair This Sensor"))
+    // An install from before keys named their board cannot vouch for this one.
+    #expect(check(nil, "MT-B").verdict == .warn)
+    // With no sensor attached there is nothing to compare against.
+    #expect(check("MT-A", nil).verdict == .ok)
+    #expect(HealthReport.sudoCheck(installed: false, services: [], keyBoard: nil, board: "MT-B").verdict == .off)
+    #expect(HealthReport.sudoCheck(installed: true, services: [], keyBoard: "MT-B", board: "MT-B").verdict == .warn)
+  }
+
   @Test func defaultPINWarnsEvenWhenPaired() throws {
     let paired = SmartCardIdentities(paired: [.init(hash: "AB", name: "mactouch PIV Authentication")])
     let row = try unlockRow(piv: "identity", pin: "default", identities: paired)

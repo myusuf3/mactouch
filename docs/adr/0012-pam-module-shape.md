@@ -30,7 +30,7 @@ ADR-0009 settled the cryptography: the module verifies a device HMAC with a root
 
 Installing is one command plus a touch, and the password never stops working. Uninstalling is one command. Rotating the key after an NVS erase is `--repair`.
 
-Because the key is root-only, `mactouch doctor` running as a user can report whether the module is installed and which services name it, but not whether the stored key still matches the device. A mismatch shows up as a warning in the auth log and a password prompt, not as a red doctor row. Running doctor as root to close that gap is possible later.
+Because the key is root-only, `mactouch doctor` running as a user can report whether the module is installed and which services name it, but not whether the stored key still matches the device. A mismatch shows up as a warning in the auth log and a password prompt, not as a red doctor row. Running doctor as root to close that gap is possible later. Since ADR-0024 doctor does warn when the key was paired with a board other than the attached one, from the readable `.sensor` file beside it.
 
 The 20 second window is per PAM conversation. A tool that opens several sudo sessions in a row asks for several touches, as Touch ID would.
 
