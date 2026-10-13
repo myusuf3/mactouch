@@ -12,7 +12,7 @@ ADR-0009 settled the cryptography: the module verifies a device HMAC with a root
 
 **Path and file.** The module is built as a Mach-O bundle with the command line tools, ad-hoc signed, and installed at `/usr/local/lib/pam/pam_mactouch.so`, root-owned. `/usr/lib/pam` is under SIP. The PAM line names the module by absolute path so it does not depend on OpenPAM's search list.
 
-**Key.** `/etc/mactouch/<user>.key`, a hex line, directory 0700 and file 0600, root-owned. One key per user because one Mac can pair with more than one device. The install script obtains it by running `mactouch pair` as the invoking user and never prints it.
+**Key.** `/etc/mactouch/<user>.key`, a hex line, directory 0700 and file 0600, root-owned (the directory is 0755 since ADR-0024, which names the key's board beside it). One key per user because one Mac can pair with more than one device. The install script obtains it by running `mactouch pair` as the invoking user and never prints it.
 
 **Socket.** The module takes `PAM_USER`, resolves that user's home through the directory service, and connects to `~/Library/Application Support/MacTouch/control.sock` as root. The socket is 0600 to the user, which root passes. For sudo `PAM_USER` is the invoking user, which is the person whose finger and daemon are wanted.
 

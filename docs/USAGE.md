@@ -186,7 +186,7 @@ mactouch reboot
 ## sudo with a fingerprint
 
 ```
-sudo scripts/pam-install.sh                 # pair, store the key root-only, enable for sudo
+sudo scripts/pam-install.sh                 # pair, store the key root-only, enable for sudo (again for a new board)
 sudo scripts/pam-install.sh --service su    # any other PAM service
 sudo scripts/pam-install.sh --repair        # pair again after a reflash that lost the key
 sudo scripts/pam-uninstall.sh [--purge]     # remove; --purge also deletes the stored key
@@ -200,7 +200,9 @@ also falls through. Twenty seconds per request.
 
 Pairing needs a touch and the device releases its key once per boot, so a
 failed install means a replug before retrying. The key lives at
-`/etc/mactouch/<user>.key`, root only. Reflashing does not change it;
+`/etc/mactouch/<user>.key`, root only, with the board it came from named in
+`<user>.sensor` beside it (ADR-0024). Running the install with a different
+board attached pairs that one instead. Reflashing does not change the key;
 erasing NVS does, and then `--repair` pairs again.
 
 On macOS the sudo stack includes `/etc/pam.d/sudo_local`, which survives OS
