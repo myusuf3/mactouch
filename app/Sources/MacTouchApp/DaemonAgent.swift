@@ -43,7 +43,7 @@ final class DaemonAgent: ObservableObject {
   /// Why mactouchd is not running, for the line beside `HelperAction`.
   var stoppedReason: String {
     if status == .requiresApproval { return "Allow MacTouch under Login Items so its background helper can run." }
-    return lastError ?? "Starting the background helper…"
+    return lastError ?? "The background helper is not running."
   }
 
   /// scripts/install.sh wrote a plist with the same label to
@@ -67,19 +67,17 @@ final class DaemonAgent: ObservableObject {
 /// The way back while mactouchd is not running. Login Items lists the
 /// helper for as long as it is registered, even after launchd has dropped
 /// it, so only an approval still pending sends people there; otherwise
-/// registering again brings it back.
+/// registering again brings it back. Starting it waits for a click because
+/// `daemon.sh stop` frees the device for `--direct` commands, and a pane
+/// that restarted the helper on sight would take it back.
 struct HelperAction: View {
   @ObservedObject var agent: DaemonAgent
 
   var body: some View {
     if agent.status == .requiresApproval {
       Button("Open Login Items…") { agent.openLoginItems() }
-    } else if agent.lastError != nil {
-      Button("Try Again") { agent.register() }
     } else {
-      ProgressView()
-        .controlSize(.small)
-        .onAppear { agent.register() }
+      Button(agent.lastError == nil ? "Start Helper" : "Try Again") { agent.register() }
     }
   }
 }
