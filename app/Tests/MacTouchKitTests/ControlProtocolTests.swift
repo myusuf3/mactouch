@@ -104,8 +104,10 @@ import Testing
       }
     }
     var modes: Set<Int> = []
+    var made = 0
     while starting.wait(timeout: .now()) == .timedOut {
-      let folder = root + "/\(UUID().uuidString.prefix(8))"
+      let folder = root + "/\(made)"
+      made += 1
       try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: false)
       let mode = try #require(FileManager.default.attributesOfItem(atPath: folder)[.posixPermissions] as? Int)
       modes.insert(mode & 0o777)
