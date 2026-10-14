@@ -58,6 +58,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 /// land behind whatever is in front.
 struct SettingsView: View {
   @ObservedObject var model: DaemonModel
+  @ObservedObject var agent: DaemonAgent
   @ObservedObject var loginItem: LoginItem
   @AppStorage("settingsPane") private var pane: SettingsPane = .general
 
@@ -105,12 +106,12 @@ struct SettingsView: View {
 
   @ViewBuilder private var detail: some View {
     switch pane {
-    case .general: GeneralPane(model: model, loginItem: loginItem)
+    case .general: GeneralPane(model: model, agent: agent, loginItem: loginItem)
     case .ring: RingPane(model: model)
     case .monitors: MonitorsPane(model: model)
     case .fingers: FingersPane(model: model)
     case .smartCard: SmartCardPane(model: model)
-    case .passwords: PasswordsPane(model: model)
+    case .passwords: PasswordsPane(model: model, agent: agent)
     case .firmware: FirmwarePane(model: model)
     case .diagnostics: DiagnosticsPane(model: model)
     case .about: AboutPane(model: model)

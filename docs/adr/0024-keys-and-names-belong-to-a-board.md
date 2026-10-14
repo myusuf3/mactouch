@@ -17,6 +17,7 @@ mactouchd reads the serial number from the USB registry and reports it as `seria
 - `pam-install.sh` writes the serial to `/etc/mactouch/<user>.sensor` and keeps a stored key only when it names the attached board; otherwise it pairs again. The directory becomes 0755 so the app can read the `.sensor` file; the key file stays root-only 0600.
 - mactouchd keeps the serial of its keychain key in its defaults. With another board attached, `password status` says `stored=no` and nothing is armed until `password set` pairs again.
 - The app keeps finger names per serial, re-reads the finger list whenever a board connects, and clears what it showed when one goes.
+- `mactouch doctor` and the app's Diagnostics pane warn on the sudo row when the `.sensor` file names another board.
 - The app remembers the last board it saw. When another one is attached it opens the setup window on the first step that board still needs.
 
 Keys and names stored before this had no serial and are treated as another board's: sudo and password mode ask to pair again, and old names are dropped.

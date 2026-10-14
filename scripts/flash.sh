@@ -21,11 +21,16 @@ if [[ -z "$port" ]]; then
   port="${ports[1]}"
 fi
 
-# The daemon holds the device; give esptool the port and bring it back after.
+# The daemon holds the device; give esptool the port and bring it back after,
+# however the flash ends, or the helper stays stopped until the next login.
 label="dev.mactouch.daemon"
-daemon_was_loaded=false
+restart_daemon() {
+  sleep 2
+  "$here/daemon.sh" start && print "mactouchd restarted."
+}
 if launchctl print "gui/$UID/$label" >/dev/null 2>&1; then
-  daemon_was_loaded=true
+  trap restart_daemon EXIT
+  trap "exit 130" INT TERM
   launchctl bootout "gui/$UID/$label"
 fi
 pkill -f "debug/mactouchd" 2>/dev/null || true
@@ -67,11 +72,6 @@ esptool.py --chip esp32s3 --port "$port" -b 921600 --before default_reset --afte
 
 print
 print "Done. The board has been reset into the new firmware."
-if $daemon_was_loaded; then
-  sleep 2
-  "$here/daemon.sh" start
-  print "mactouchd restarted."
-fi
 if $backup_wanted; then
   print "Restore the old firmware with (the dump of an encrypted chip is ciphertext; it restores to the same chip as is):"
   print "  esptool.py --chip esp32s3 --port <port> write_flash 0 $backup"

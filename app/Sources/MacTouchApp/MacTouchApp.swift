@@ -38,7 +38,7 @@ struct MacTouchApp: App {
       StatusMenu(model: model, agent: agent) { [setupWindow] in setupWindow.show() }
     }
     Settings {
-      SettingsView(model: model, loginItem: loginItem)
+      SettingsView(model: model, agent: agent, loginItem: loginItem)
     }
   }
 

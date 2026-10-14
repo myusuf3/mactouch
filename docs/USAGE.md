@@ -173,7 +173,7 @@ off.
 ### Diagnostics
 
 ```
-mactouch doctor              # verdicts with a fix each: daemon, device, sensor, fingers, sudo, unlock
+mactouch doctor              # verdicts with a fix each: daemon, device, sensor, sudo, touch, fingers, unlock
 mactouch status              # daemon, device, firmware, sensor, ring, layers, monitors
 mactouch ping
 mactouch gpio                # levels of the unused XIAO pins
