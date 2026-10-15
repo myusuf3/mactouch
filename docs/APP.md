@@ -50,9 +50,12 @@ Quit MacTouch                                    ⌘Q
 
 The symbol is SF Symbols `touchid`, a template image so the system colours it
 for light and dark menu bars. State does not change the symbol; the status
-lines carry it. When the daemon is unreachable the first line reads "Daemon
-not running" and the menu offers "Start daemon", which runs
-`scripts/daemon.sh start`'s launchctl call.
+lines carry it. When the daemon is unreachable the first line reads "Helper
+Not Running" and the menu offers "Start Helper", which registers the bundled
+launch agent again, or "Allow MacTouch in Login Items…" while macOS waits for
+approval. A running app does not start it on its own, so
+`scripts/daemon.sh stop` keeps it stopped until a click or the app's next
+launch.
 
 The extra can be hidden from Settings through the `isInserted` binding, per
 the HIG rule that people decide whether an extra sits in their menu bar. The

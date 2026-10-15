@@ -23,7 +23,7 @@ struct StatusMenu: View {
       if agent.status == .requiresApproval {
         Button("Allow MacTouch in Login Items…") { agent.openLoginItems() }
       } else {
-        Button("Start Daemon") { agent.register() }
+        Button("Start Helper") { agent.register() }
       }
     }
     if model.daemonRunning {
@@ -69,7 +69,7 @@ struct StatusMenu: View {
   }
 
   private var statusLine: String {
-    guard model.daemonRunning else { return "Daemon Not Running" }
+    guard model.daemonRunning else { return "Helper Not Running" }
     guard model.deviceConnected else { return "Sensor Not Connected" }
     guard let prints = model.prints else { return "Connected" }
     return prints == 1 ? "Connected · 1 Finger" : "Connected · \(prints) Fingers"
