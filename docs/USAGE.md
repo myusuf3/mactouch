@@ -261,7 +261,9 @@ watchdog restarts the board within 10 seconds. If that does not bring it back, u
 board, and if it recurs, open an issue with the log.
 
 **`--direct` says the port is held by another process.** The daemon has it,
-as intended. Drop `--direct`, or `scripts/daemon.sh stop` first.
+as intended. Drop `--direct`, or `scripts/daemon.sh stop` first. The daemon
+stays stopped until `scripts/daemon.sh start`, Start Helper in the app, or
+reopening the app.
 
 **Every touch reports no match.** Press flat and hold for a second rather
 than tapping, and make sure it is the finger you enrolled. Enrol the same
